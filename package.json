@@ -1,0 +1,30 @@
+{
+  "name": "ask-gemini-bot",
+  "version": "1.0.0",
+  "description": "Discord bot that lets you talk to Gemini models",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "dev:test": "cross-env TEST_MODE=true ts-node src/index.ts",
+    "test": "cross-env TEST_MODE=true node dist/index.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "^1.30.0",
+    "discord.js": "^14.14.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "cross-env": "^7.0.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

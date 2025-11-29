@@ -1,0 +1,6 @@
+{
+  "token": "YOUR_BOT_TOKEN_HERE",
+  "test_token": "YOUR_TEST_BOT_TOKEN_HERE",
+  "gemini_api_key": "YOUR_GEMINI_API_KEY_HERE"
+}
+
