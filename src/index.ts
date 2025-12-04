@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits, Events } from 'discord.js';
 import { GoogleGenAI } from '@google/genai';
 import { buildPrompt, MESSAGE_HISTORY_LIMIT } from './prompt';
 import { parseFlags, BotFlags } from './flags';
+import { handleServerConfigCommand } from './commands';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -120,6 +121,13 @@ client.on('messageCreate', async (message) => {
 
       // Parse flags from the message
       const { flags, content: userMessageContent } = parseFlags(rawMessageContent);
+
+      // Check if this is a server config command (handles before LLM call)
+      const commandResult = handleServerConfigCommand(message, rawMessageContent);
+      if (commandResult.handled) {
+        await message.reply(commandResult.response || 'Command processed.');
+        return;
+      }
 
       // If there's no content after removing flags, send a default response
       if (!userMessageContent) {

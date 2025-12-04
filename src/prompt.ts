@@ -1,4 +1,5 @@
 import { Message } from 'discord.js';
+import { getServerSetting } from './serverConfig';
 
 // Number of previous messages to include as context
 export const MESSAGE_HISTORY_LIMIT = 20;
@@ -40,6 +41,19 @@ function replaceMentions(message: Message, botUserId: string | undefined): strin
   }
 
   return content.trim();
+}
+
+/**
+ * Checks if a flag is enabled for the guild associated with a message.
+ * @param message - The Discord message (must be from a guild)
+ * @param flagName - The name of the flag to check
+ * @returns True if the flag is enabled, false otherwise
+ */
+function isFlagEnabled(message: Message, flagName: string): boolean {
+  if (!message.guild) {
+    return false;
+  }
+  return getServerSetting<boolean>(message.guild.id, flagName, false) ?? false;
 }
 
 /**
@@ -136,7 +150,20 @@ IMPORTANT: When you respond, your response should **JUST** be your response
 message text, as if you are speaking naturally in the conversation. Do not 
 include an author specifier/prefix in your response.`;
 
+  // Check if runescape flag is enabled for this server
+  const runescapeSection = isFlagEnabled(currentMessage, 'runescape')
+    ? `
+
+ADDITIONAL CONTEXT - Runescape Mode:
+You should incorporate Runescape metaphors, references, and jokes wherever possible in your 
+responses. Use Runescape terminology, game mechanics, items, locations, NPCs, and memes 
+to make your responses more entertaining and relevant to Runescape players. Feel free to 
+reference classic Runescape moments, skills, quests, and community jokes naturally in 
+the conversation. Make sure that all Runescape metaphors, jokes, and references you use 
+are accurate and factually correct.`
+    : '';
+
   // Combine all sections
-  return systemPrompt + historySection + currentMessageSection;
+  return systemPrompt + historySection + currentMessageSection + runescapeSection;
 }
 

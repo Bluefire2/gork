@@ -3,4 +3,5 @@ dist/
 *.log
 .env
 config.json
+serverConfig.json
 

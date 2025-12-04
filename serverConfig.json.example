@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "123456789012345678": {
+      "prefix": "!",
+      "enabled": true,
+      "defaultModel": "gemini-2.5-pro",
+      "maxContextMessages": 10
+    },
+    "987654321098765432": {
+      "prefix": "?",
+      "enabled": true,
+      "defaultModel": "gemini-2.5-flash",
+      "maxContextMessages": 5
+    }
+  }
+}
+
