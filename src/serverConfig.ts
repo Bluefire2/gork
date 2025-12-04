@@ -16,6 +16,7 @@ export type FlagType = 'boolean' | 'string' | 'number';
  */
 export const FLAG_TYPES: Record<string, FlagType> = {
   runescape: 'boolean',
+  context: 'number',
   // Add more flag definitions here
   // enabled: 'boolean',
   // prefix: 'string',

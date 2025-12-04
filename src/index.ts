@@ -3,6 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { buildPrompt, MESSAGE_HISTORY_LIMIT } from './prompt';
 import { parseFlags, BotFlags } from './flags';
 import { handleServerConfigCommand } from './commands';
+import { getServerSetting } from './serverConfig';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -140,8 +141,10 @@ client.on('messageCreate', async (message) => {
         await message.channel.sendTyping();
 
         // Fetch previous messages for context
-        // Use the context value from flags, or default to MESSAGE_HISTORY_LIMIT
-        const contextLimit = flags.context || MESSAGE_HISTORY_LIMIT;
+        // Priority: server-level context flag > per-message flag > default
+        // Cap at 100 messages maximum
+        const serverContext = message.guild ? getServerSetting<number>(message.guild.id, 'context') : undefined;
+        const contextLimit = Math.min(100, serverContext ?? flags.context ?? MESSAGE_HISTORY_LIMIT);
         const previousMessages = await message.channel.messages.fetch({ 
           limit: contextLimit,
           before: message.id 
