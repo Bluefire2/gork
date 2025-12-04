@@ -14,13 +14,24 @@ npm install
 cp config.json.example config.json
 ```
 
-3. Edit `config.json` and add your bot tokens:
+3. Edit `config.json` and add your bot tokens and Gemini API key:
 ```json
 {
   "token": "YOUR_ACTUAL_BOT_TOKEN",
-  "test_token": "YOUR_TEST_BOT_TOKEN"
+  "test_token": "YOUR_TEST_BOT_TOKEN",
+  "gemini_api_key": "YOUR_GEMINI_API_KEY"
 }
 ```
+
+**Configuration Parameters:**
+- `token` - Your main Discord bot token (used in regular/production mode)
+- `test_token` - Your test Discord bot token (used in test mode)
+- `gemini_api_key` - Your Google Gemini API key (required for AI functionality)
+
+**Getting a Gemini API Key:**
+1. Go to https://aistudio.google.com/app/apikey
+2. Create a new API key or use an existing one
+3. Copy the API key and add it to `config.json`
 
 ## Running the Bot
 
@@ -91,9 +102,30 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permission
 
 The permissions value `19456` includes: View Channels, Send Messages, Read Message History, Use External Emojis, and Embed Links.
 
+## Test Mode
+
+**Test mode** is a special debugging mode that provides additional logging and uses a separate bot token. When test mode is enabled:
+
+- The bot uses `test_token` from `config.json` instead of the regular `token`
+- Additional debug logging is enabled (prompts sent to Gemini, responses received, etc.)
+- Available Gemini models are listed on startup
+- Useful for development and testing without affecting your production bot
+
+**How to enable test mode:**
+- Set the `TEST_MODE` environment variable to `'true'` when running the bot
+- Or use the test mode npm scripts: `npm run dev:test` or `npm run test`
+
+**What is `test_token`?**
+The `test_token` is a separate Discord bot token used exclusively when running in test mode. This allows you to:
+- Test bot functionality without affecting your production bot
+- Use a different bot account for development/testing
+- Keep your production bot running while testing new features
+
+You can create a separate Discord application in the Discord Developer Portal to get a test bot token, or use a different bot token from an existing application.
+
 ## Notes
 
 - The bot automatically switches between tokens based on the `TEST_MODE` environment variable
-- `config.json` is gitignored to protect your tokens
-- Make sure to add your actual tokens to `config.json` before running the bot
+- `config.json` is gitignored to protect your tokens and API keys
+- Make sure to add your actual tokens and Gemini API key to `config.json` before running the bot
 
