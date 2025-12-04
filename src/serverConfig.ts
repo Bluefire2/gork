@@ -235,7 +235,7 @@ export function parseFlagValue(flagName: string, valueString: string): any {
       return numValue;
 
     case 'string':
-      return valueString;
+      return valueString.trim();
 
     default:
       throw new Error(`Unknown flag type: "${flagType}" for flag "${flagName}"`);

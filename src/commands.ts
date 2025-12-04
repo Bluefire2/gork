@@ -33,7 +33,7 @@ export function handleServerConfigCommand(message: Message, content: string): Co
   const setFlagMatch = content.match(/--setFlag="([^"]+):\s*([^"]+)"/i);
   if (setFlagMatch) {
     const flagName = setFlagMatch[1].trim();
-    const valueString = setFlagMatch[2];
+    const valueString = setFlagMatch[2].trim();
     
     try {
       const parsedValue = parseFlagValue(flagName, valueString);
