@@ -120,6 +120,23 @@ export function handleServerConfigCommand(message: Message, content: string): Co
     }
   }
 
+  // Parse --setPersonality ... (everything after --setPersonality is the personality text)
+  const setPersonalityMatch = content.match(/--setPersonality\s+(.+)/i);
+  if (setPersonalityMatch) {
+    const personalityText = setPersonalityMatch[1].trim();
+    if (!personalityText) {
+      return {
+        handled: true,
+        response: `❌ Personality text cannot be empty. Usage: \`--setPersonality You are helpful, friendly, and chatty.\``
+      };
+    }
+    setServerSetting(guildId, 'personality', personalityText);
+    return {
+      handled: true,
+      response: `✅ Set personality to: "${personalityText}"`
+    };
+  }
+
   // No command matched
   return { handled: false };
 }
