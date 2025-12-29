@@ -1,5 +1,6 @@
 import { Message } from 'discord.js';
 import { getServerSetting, setServerSetting, getServerSettings, removeServerSetting, getFlagType, parseFlagValue } from './serverConfig';
+import { BUILD_ID, BUILD_TIMESTAMP } from './version';
 
 /**
  * Result of processing a command
@@ -149,6 +150,14 @@ export function handleServerConfigCommand(message: Message, content: string): Co
     return {
       handled: true,
       response: `🧠 Current Personality:\n\`\`\`\n${personality}\n\`\`\``
+    };
+  }
+
+  // Parse --version
+  if (content.match(/--version/i)) {
+    return {
+      handled: true,
+      response: `🤖 Bot Version: \`${BUILD_ID}\` (Built: \`${BUILD_TIMESTAMP}\`)`
     };
   }
 
