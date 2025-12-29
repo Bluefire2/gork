@@ -52,10 +52,10 @@ function replaceMentions(message: Message, botUserId: string | undefined): strin
 function sanitizePersonality(personality: string): string {
   // Escape quotes and backslashes
   let sanitized = personality.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  // Replace newlines with spaces to prevent prompt structure breaking
-  sanitized = sanitized.replace(/\n/g, ' ').replace(/\r/g, '');
-  // Normalize multiple spaces to single space
-  sanitized = sanitized.replace(/\s+/g, ' ').trim();
+  // Remove carriage returns
+  sanitized = sanitized.replace(/\r/g, '');
+  // Normalize horizontal whitespace to single space
+  sanitized = sanitized.replace(/[ \t]+/g, ' ').trim();
   return sanitized;
 }
 
@@ -180,10 +180,10 @@ are accurate and factually correct.`
     : '';
 
   // Get personality setting for this server
-  const personality = currentMessage.guild 
+  const personality = currentMessage.guild
     ? getServerSetting<string>(currentMessage.guild.id, 'personality')
     : undefined;
-  
+
   const personalitySection = personality
     ? `
 

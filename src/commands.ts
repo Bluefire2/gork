@@ -34,7 +34,7 @@ export function handleServerConfigCommand(message: Message, content: string): Co
   if (setFlagMatch) {
     const flagName = setFlagMatch[1].trim();
     const valueString = setFlagMatch[2].trim();
-    
+
     try {
       const parsedValue = parseFlagValue(flagName, valueString);
       setServerSetting(guildId, flagName, parsedValue);
@@ -121,7 +121,7 @@ export function handleServerConfigCommand(message: Message, content: string): Co
   }
 
   // Parse --setPersonality ... (everything after --setPersonality is the personality text)
-  const setPersonalityMatch = content.match(/--setPersonality\s+(.+)/i);
+  const setPersonalityMatch = content.match(/--setPersonality\s+([\s\S]+)/i);
   if (setPersonalityMatch) {
     const personalityText = setPersonalityMatch[1].trim();
     if (!personalityText) {
