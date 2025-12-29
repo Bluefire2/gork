@@ -137,6 +137,21 @@ export function handleServerConfigCommand(message: Message, content: string): Co
     };
   }
 
+  // Parse --getPersonality
+  if (content.match(/--getPersonality/i)) {
+    const personality = getServerSetting(guildId, 'personality');
+    if (!personality) {
+      return {
+        handled: true,
+        response: `❌ Personality is not set.`
+      };
+    }
+    return {
+      handled: true,
+      response: `🧠 Current Personality:\n\`\`\`\n${personality}\n\`\`\``
+    };
+  }
+
   // No command matched
   return { handled: false };
 }
