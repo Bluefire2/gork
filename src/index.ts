@@ -22,10 +22,10 @@ const isTestMode = process.env.TEST_MODE === 'true';
 const token = isTestMode ? config.test_token : config.token;
 
 // Gemini model names
-// Common model names: gemini-2.5-flash, gemini-2.5-pro, gemini-1.5-flash, gemini-1.5-pro
+// Common model names: gemini-3.8-flash, gemini-4-argon, gemini-3.6-flash, gemini-3.5-flash-lite
 // If models don't work, use listAvailableModels() to see what's actually available
-const GEMINI_MODEL_REGULAR = 'gemini-2.5-pro';
-const GEMINI_MODEL_ADVANCED = 'gemini-3-pro-preview';
+const GEMINI_MODEL_REGULAR = 'gemini-3.8-flash';
+const GEMINI_MODEL_ADVANCED = 'gemini-4-argon';
 
 /**
  * Lists all available Gemini models (useful for debugging).
@@ -44,18 +44,18 @@ async function listAvailableModels(): Promise<void> {
       });
     } else {
       console.log('Could not retrieve model list. Common model names:');
-      console.log('  - gemini-2.5-flash');
-      console.log('  - gemini-2.5-pro');
-      console.log('  - gemini-1.5-flash');
-      console.log('  - gemini-1.5-pro');
+      console.log('  - gemini-3.8-flash');
+      console.log('  - gemini-4-argon');
+      console.log('  - gemini-3.6-flash');
+      console.log('  - gemini-3.5-flash-lite');
     }
   } catch (error) {
     console.error('Error listing models:', error);
     console.log('Common model names to try:');
-    console.log('  - gemini-2.5-flash');
-    console.log('  - gemini-2.5-pro');
-    console.log('  - gemini-1.5-flash');
-    console.log('  - gemini-1.5-pro');
+    console.log('  - gemini-3.8-flash');
+    console.log('  - gemini-4-argon');
+    console.log('  - gemini-3.6-flash');
+    console.log('  - gemini-3.5-flash-lite');
   }
 }
 
