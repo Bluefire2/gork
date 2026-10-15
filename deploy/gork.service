@@ -1,0 +1,36 @@
+# systemd unit for the gork Discord bot.
+# Installed to /etc/systemd/system/gork.service by deploy/deploy.sh.
+#
+# Expects:
+#   /opt/gork                  - a checkout of this repo, owned by the gork user
+#   /opt/gork/config.json      - bot tokens + Gemini key (mode 600, owner gork)
+#   /opt/gork/serverConfig.json - created/updated by the bot at runtime
+
+[Unit]
+Description=gork Discord bot
+Wants=network-online.target
+After=network-online.target
+# Give up after 5 failed starts in 5 minutes instead of crash-looping forever
+# (a bad token or missing config.json exits immediately and will never recover).
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=gork
+Group=gork
+WorkingDirectory=/opt/gork
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=10
+
+# Hardening: the bot only needs to write serverConfig.json in its own directory.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/gork
+
+[Install]
+WantedBy=multi-user.target

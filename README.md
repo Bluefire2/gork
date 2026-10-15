@@ -123,6 +123,29 @@ The `test_token` is a separate Discord bot token used exclusively when running i
 
 You can create a separate Discord application in the Discord Developer Portal to get a test bot token, or use a different bot token from an existing application.
 
+## Deployment
+
+The bot runs on a small Linux VM (Debian, Node at `/usr/bin/node`) as a systemd service.
+Files in `deploy/`:
+
+- `gork.service` - systemd unit. Runs `node dist/index.js` from `/opt/gork` as the `gork` user, restarts on failure, and gives up after 5 failed starts in 5 minutes.
+- `deploy.sh` - run on the VM with `sudo`. Creates the user and the `/opt/gork` checkout on first run, fast-forwards to `origin/master`, runs `npm ci` and `npm run build`, installs the unit, restarts, and waits for `Bot is ready!` in the journal.
+
+First install:
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Bluefire2/gork/master/deploy/deploy.sh
+sudo bash deploy.sh   # stops and asks for /opt/gork/config.json
+sudo cp config.json.example /opt/gork/config.json && sudo nano /opt/gork/config.json
+sudo bash deploy.sh
+```
+
+Subsequent deploys:
+```bash
+sudo bash /opt/gork/deploy/deploy.sh
+```
+
+Logs: `journalctl -u gork -f`
+
 ## Notes
 
 - The bot automatically switches between tokens based on the `TEST_MODE` environment variable
