@@ -1,0 +1,4 @@
+#!/bin/sh
+# Regenerate src/version.ts on every commit and include it in the commit.
+# Enabled by `npm install` via the "prepare" script (core.hooksPath=.githooks).
+node scripts/generateVersion.js && git add src/version.ts
