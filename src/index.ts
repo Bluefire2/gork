@@ -165,14 +165,24 @@ client.on('messageCreate', async (message) => {
 
         // Log the prompt being sent to Gemini
         log(`Prompt being sent to Gemini (model: ${model}):`);
-        log('---');
-        log(prompt);
+        log('--- system instruction ---');
+        log(prompt.systemInstruction);
+        log('--- contents ---');
+        for (const turn of prompt.contents) {
+          log(`[${turn.role}]`);
+          log(turn.parts?.map(part => part.text ?? '').join(''));
+        }
         log('---');
 
-        // Call Gemini API
+        // Call Gemini API. The instructions go in systemInstruction so the
+        // model treats them as privileged; the conversation is sent as
+        // role-separated turns.
         const response = await genAI.models.generateContent({
           model: model,
-          contents: prompt,
+          contents: prompt.contents,
+          config: {
+            systemInstruction: prompt.systemInstruction,
+          },
         });
         const text = response.text;
 
