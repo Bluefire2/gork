@@ -97,13 +97,15 @@ function formatMessage(message: Message, botUserId: string | undefined): string 
  * @param messageHistory - Array of previous messages from the channel (oldest to newest)
  * @param botUserId - The user ID of the bot itself
  * @param contentOverride - Optional content to use instead of the message's content (e.g., after removing flags)
+ * @param osrsTools - Whether the Old School RuneScape lookup tools are available for this reply
  * @returns A formatted prompt string for Gemini
  */
 export function buildPrompt(
   currentMessage: Message,
   messageHistory: Message[],
   botUserId: string | undefined,
-  contentOverride?: string
+  contentOverride?: string,
+  osrsTools = false
 ): string {
   // Build the initial system prompt
   const systemPrompt = `You are a helpful and friendly chatbot assistant 
@@ -166,6 +168,21 @@ IMPORTANT: When you respond, your response should **JUST** be your response
 message text, as if you are speaking naturally in the conversation. Do not 
 include an author specifier/prefix in your response.`;
 
+  const osrsToolsSection = osrsTools
+    ? `
+
+TOOLS - Old School RuneScape lookups:
+You have tools that look up public Old School RuneScape data for any player by their 
+RuneScape name: skills and levels, boss kill counts, clues and minigames, quests, achievement 
+diaries, combat achievements, collection log, recent XP gains, and Grand Exchange prices. 
+Use them whenever someone asks about a specific player's account or an item's price, rather 
+than guessing. Always pass the player's RuneScape name. If someone asks about "my" account 
+and the conversation doesn't say what their RuneScape name is, ask them for it; a Discord 
+username is not a RuneScape name. If a player isn't found on the regular hiscores, they may 
+be an ironman: try the ironman account types. When a result says its data may be old, say 
+so if it matters. Keep the answer short enough for a Discord message.`
+    : '';
+
   // Check if runescape flag is enabled for this server
   const runescapeSection = isFlagEnabled(currentMessage, 'runescape')
     ? `
@@ -200,6 +217,6 @@ ${sanitizePersonality(personality)}
     : '';
 
   // Combine all sections
-  return systemPrompt + historySection + currentMessageSection + runescapeSection + personalitySection;
+  return systemPrompt + historySection + currentMessageSection + osrsToolsSection + runescapeSection + personalitySection;
 }
 

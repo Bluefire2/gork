@@ -27,6 +27,12 @@ cp config.json.example config.json
 - `token` - Your main Discord bot token (used in regular/production mode)
 - `test_token` - Your test Discord bot token (used in test mode)
 - `gemini_api_key` - Your Google Gemini API key (required for AI functionality)
+- `osrs_mcp_url`, `osrs_mcp_token` - Optional. The public endpoint of the
+  [rs-mcp](https://github.com/Bluefire2/rs-mcp) server and its bearer token. When both are set,
+  Gemini can look up Old School RuneScape data (stats, boss kill counts, quests, diaries, gains,
+  GE prices) for any player by name. The endpoint serves public data only. If it can't be
+  reached, the bot answers without these tools. The production token is in the rs-mcp project's
+  Secret Manager as `osrs-mcp-public-api-tokens`.
 
 **Getting a Gemini API Key:**
 1. Go to https://aistudio.google.com/app/apikey
