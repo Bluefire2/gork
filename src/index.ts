@@ -4,6 +4,7 @@ import { buildPrompt, MESSAGE_HISTORY_LIMIT } from './prompt';
 import { parseFlags, BotFlags } from './flags';
 import { handleServerConfigCommand } from './commands';
 import { getServerSetting } from './serverConfig';
+import { OsrsTool } from './osrs';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -11,6 +12,9 @@ interface Config {
   token: string;
   test_token: string;
   gemini_api_key: string;
+  // Optional: the rs-mcp public endpoint and its bearer token, for Old School RuneScape lookups
+  osrs_mcp_url?: string;
+  osrs_mcp_token?: string;
 }
 
 // Load configuration
@@ -81,6 +85,17 @@ if (!config.gemini_api_key || config.gemini_api_key === 'YOUR_GEMINI_API_KEY_HER
 
 // Initialize Gemini AI
 const genAI = new GoogleGenAI({ apiKey: config.gemini_api_key });
+
+// Old School RuneScape tools, if configured
+const osrsTool = config.osrs_mcp_url && config.osrs_mcp_token
+  ? new OsrsTool(config.osrs_mcp_url, config.osrs_mcp_token)
+  : null;
+if (!osrsTool) {
+  console.log('OSRS tools disabled: osrs_mcp_url / osrs_mcp_token not set in config.json');
+}
+
+// Upper bound on tool calls per reply
+const MAX_TOOL_CALLS = 6;
 
 // Create a new client instance
 const client = new Client({
@@ -156,9 +171,12 @@ client.on('messageCreate', async (message) => {
           .filter(msg => !msg.author.bot || msg.author.id === client.user?.id)
           .reverse();
 
+        // OSRS tools, unless the server can't be reached right now
+        const osrs = osrsTool ? await osrsTool.ifAvailable() : null;
+
         // Build the prompt for Gemini with message history
         // Pass the cleaned content (without flags) as an override
-        const prompt = buildPrompt(message, messageHistory, client.user?.id, userMessageContent);
+        const prompt = buildPrompt(message, messageHistory, client.user?.id, userMessageContent, osrs !== null);
 
         // Determine which model to use based on flags
         const model = flags.advanced ? GEMINI_MODEL_ADVANCED : GEMINI_MODEL_REGULAR;
@@ -173,6 +191,9 @@ client.on('messageCreate', async (message) => {
         const response = await genAI.models.generateContent({
           model: model,
           contents: prompt,
+          config: osrs
+            ? { tools: [osrs], automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS } }
+            : undefined,
         });
         const text = response.text;
 
