@@ -1,10 +1,11 @@
-import { Client, GatewayIntentBits, Events } from 'discord.js';
-import { GoogleGenAI } from '@google/genai';
+import { Client, GatewayIntentBits, Events, AttachmentBuilder } from 'discord.js';
+import { Content, GoogleGenAI } from '@google/genai';
 import { buildPrompt, MESSAGE_HISTORY_LIMIT } from './prompt';
 import { parseFlags, BotFlags } from './flags';
 import { handleServerConfigCommand } from './commands';
 import { getServerSetting } from './serverConfig';
 import { OsrsTool } from './osrs';
+import { renderStatsCard, statsFromHistory } from './statsCard';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -96,6 +97,23 @@ if (!osrsTool) {
 
 // Upper bound on tool calls per reply
 const MAX_TOOL_CALLS = 6;
+
+/**
+ * A skills card for each player whose stats Gemini looked up while answering. A card that
+ * fails to render is left out rather than failing the reply.
+ */
+async function statsCards(history: Content[] | undefined): Promise<AttachmentBuilder[]> {
+  const cards: AttachmentBuilder[] = [];
+  for (const stats of statsFromHistory(history)) {
+    try {
+      const name = `${stats.rsn.replace(/[^A-Za-z0-9_-]+/g, '_')}-stats.png`;
+      cards.push(new AttachmentBuilder(await renderStatsCard(stats), { name }));
+    } catch (error) {
+      console.error(`Could not render the stats card for ${stats.rsn}:`, error);
+    }
+  }
+  return cards;
+}
 
 // Create a new client instance
 const client = new Client({
@@ -203,24 +221,27 @@ client.on('messageCreate', async (message) => {
         log(text);
         log('---');
 
+      // Skills cards for any players whose stats were looked up, attached to the first reply
+      const files = await statsCards(response.automaticFunctionCallingHistory);
+
       // Check if we got a valid response
       if (!text || text.trim().length === 0) {
-        await message.reply('I received an empty response from Gemini.');
+        await message.reply(files.length > 0 ? { files } : 'I received an empty response from Gemini.');
         return;
       }
 
       // Discord has a 2000 character limit per message, so we may need to split long responses
       if (text.length <= 2000) {
-        await message.reply(text);
+        await message.reply({ content: text, files });
       } else {
         // Split into chunks if response is too long
         const chunks = text.match(/.{1,2000}/g) || [];
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
           if (!chunk) continue;
-          
+
           if (i === 0) {
-            await message.reply(chunk);
+            await message.reply({ content: chunk, files });
           } else {
             await message.channel.send(chunk);
           }

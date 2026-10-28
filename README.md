@@ -32,7 +32,10 @@ cp config.json.example config.json
   Gemini can look up Old School RuneScape data (stats, boss kill counts, quests, diaries, gains,
   GE prices) for any player by name. The endpoint serves public data only. If it can't be
   reached, the bot answers without these tools. The production token is in the rs-mcp project's
-  Secret Manager as `osrs-mcp-public-api-tokens`.
+  Secret Manager as `osrs-mcp-public-api-tokens`. When Gemini looks up a player's stats, the
+  reply gets an image of their skills tab (`src/statsCard.ts`; skill icons from the
+  [OSRS Wiki](https://oldschool.runescape.wiki), fonts from
+  [RuneStar/fonts](https://github.com/RuneStar/fonts) under CC0, both in `assets/osrs/`).
 
 **Getting a Gemini API Key:**
 1. Go to https://aistudio.google.com/app/apikey
