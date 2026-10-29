@@ -176,6 +176,16 @@ export function handleServerConfigCommand(message: Message, content: string): Co
 const RSN_PATTERN = /^[A-Za-z0-9 _-]{1,12}$/;
 
 /**
+ * Tidies a RuneScape name as typed (surrounding quotes, repeated spaces) and checks it.
+ * @param input - The name as the user wrote it
+ * @returns The name, or null if it can't be a RuneScape name
+ */
+export function normalizeRsn(input: string): string | null {
+  const rsn = input.trim().replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').trim();
+  return RSN_PATTERN.test(rsn) ? rsn : null;
+}
+
+/**
  * Handles --setRsn <name>, --getRsn and --removeRsn, which save the author's Old School
  * RuneScape name so questions about "my" account can be answered without asking for it.
  * @param userId - The Discord user ID of the message author
@@ -185,8 +195,8 @@ const RSN_PATTERN = /^[A-Za-z0-9 _-]{1,12}$/;
 export function handleRsnCommand(userId: string, content: string): CommandResult {
   const setRsnMatch = content.match(/--setRsn\b(.*)/i);
   if (setRsnMatch) {
-    const rsn = setRsnMatch[1].trim().replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').trim();
-    if (!RSN_PATTERN.test(rsn)) {
+    const rsn = normalizeRsn(setRsnMatch[1]);
+    if (!rsn) {
       return {
         handled: true,
         response: `❌ That isn't a valid RuneScape name (1-12 letters, numbers, spaces, - or _). Usage: \`--setRsn Lynx Titan\``
