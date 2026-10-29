@@ -1,11 +1,11 @@
-import { Client, GatewayIntentBits, Events, AttachmentBuilder } from 'discord.js';
-import { Content, GoogleGenAI } from '@google/genai';
+import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { GoogleGenAI } from '@google/genai';
 import { buildPrompt, MESSAGE_HISTORY_LIMIT } from './prompt';
 import { parseFlags, BotFlags } from './flags';
 import { handleServerConfigCommand } from './commands';
 import { getServerSetting } from './serverConfig';
 import { OsrsTool } from './osrs';
-import { renderStatsCard, statsFromHistory } from './statsCard';
+import { replyCards } from './cards';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -97,23 +97,6 @@ if (!osrsTool) {
 
 // Upper bound on tool calls per reply
 const MAX_TOOL_CALLS = 6;
-
-/**
- * A skills card for each player whose stats Gemini looked up while answering. A card that
- * fails to render is left out rather than failing the reply.
- */
-async function statsCards(history: Content[] | undefined): Promise<AttachmentBuilder[]> {
-  const cards: AttachmentBuilder[] = [];
-  for (const stats of statsFromHistory(history)) {
-    try {
-      const name = `${stats.rsn.replace(/[^A-Za-z0-9_-]+/g, '_')}-stats.png`;
-      cards.push(new AttachmentBuilder(await renderStatsCard(stats), { name }));
-    } catch (error) {
-      console.error(`Could not render the stats card for ${stats.rsn}:`, error);
-    }
-  }
-  return cards;
-}
 
 // Create a new client instance
 const client = new Client({
@@ -221,8 +204,8 @@ client.on('messageCreate', async (message) => {
         log(text);
         log('---');
 
-      // Skills cards for any players whose stats were looked up, attached to the first reply
-      const files = await statsCards(response.automaticFunctionCallingHistory);
+      // Cards for any players' stats or item price histories looked up, attached to the first reply
+      const files = await replyCards(response.automaticFunctionCallingHistory);
 
       // Check if we got a valid response
       if (!text || text.trim().length === 0) {
