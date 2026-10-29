@@ -1,5 +1,5 @@
 import { Message } from 'discord.js';
-import { getServerSetting } from './serverConfig';
+import { getServerSetting, getUserRsn } from './serverConfig';
 
 // Number of previous messages to include as context
 export const MESSAGE_HISTORY_LIMIT = 20;
@@ -92,6 +92,33 @@ function formatMessage(message: Message, botUserId: string | undefined): string 
 }
 
 /**
+ * Lists the saved RuneScape names (from --setRsn) of the people in the conversation: the
+ * author, anyone they mention, and the authors of the recent messages.
+ * @param currentMessage - The current Discord message from the user
+ * @param messageHistory - Previous messages from the channel
+ * @param botUserId - The user ID of the bot itself
+ * @returns One "username: RuneScape name" line per person with a saved name
+ */
+function knownRsns(currentMessage: Message, messageHistory: Message[], botUserId: string | undefined): string[] {
+  const users = new Map<string, string>(); // user ID -> username, author first
+  users.set(currentMessage.author.id, currentMessage.author.username);
+  for (const [id, user] of currentMessage.mentions.users) {
+    if (!user.bot) users.set(id, user.username);
+  }
+  for (const msg of messageHistory) {
+    if (!msg.author.bot) users.set(msg.author.id, msg.author.username);
+  }
+  users.delete(botUserId ?? '');
+
+  const lines: string[] = [];
+  for (const [id, username] of users) {
+    const rsn = getUserRsn(id);
+    if (rsn) lines.push(`- ${username}: "${rsn}"`);
+  }
+  return lines;
+}
+
+/**
  * Builds a prompt for Gemini that introduces the chatbot task and includes message history and the user message.
  * @param currentMessage - The current Discord message from the user
  * @param messageHistory - Array of previous messages from the channel (oldest to newest)
@@ -168,6 +195,11 @@ IMPORTANT: When you respond, your response should **JUST** be your response
 message text, as if you are speaking naturally in the conversation. Do not 
 include an author specifier/prefix in your response.`;
 
+  const rsns = osrsTools ? knownRsns(currentMessage, messageHistory, botUserId) : [];
+  const rsnSection = rsns.length > 0
+    ? `Saved RuneScape names (Discord username: RuneScape name):\n${rsns.join('\n')}\n`
+    : 'Nobody in this conversation has saved a RuneScape name.\n';
+
   const osrsToolsSection = osrsTools
     ? `
 
@@ -176,9 +208,13 @@ You have tools that look up public Old School RuneScape data for any player by t
 RuneScape name: skills and levels, boss kill counts, clues and minigames, quests, achievement 
 diaries, combat achievements, collection log, recent XP gains, and Grand Exchange prices and
 price history. Use them whenever someone asks about a specific player's account or an item's
-price, rather than guessing. Always pass the player's RuneScape name.
-If someone asks about "my" account and the conversation doesn't say what their RuneScape name is, ask them for it; a Discord 
-username is not a RuneScape name. If a player isn't found on the regular hiscores, they may 
+price, rather than guessing. Always pass the player's RuneScape name. A Discord username is
+not a RuneScape name: use the saved names below, which people set with "--setRsn". If someone
+asks about "my" account (or another person's) and there's no saved name for them and the
+conversation doesn't say it, ask them for it, and mention they can save it by tagging you
+with "--setRsn <name>".
+${rsnSection}
+If a player isn't found on the regular hiscores, they may
 be an ironman: try the ironman account types. When a result says its data may be old, say 
 so if it matters. Keep the answer short enough for a Discord message. When you look up a
 player's skills, an image of all their levels is attached to your reply automatically, so
