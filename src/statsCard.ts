@@ -1,6 +1,6 @@
-import { Content } from '@google/genai';
-import { createCanvas, loadImage, GlobalFonts, Image, SKRSContext2D } from '@napi-rs/canvas';
+import { loadImage, Image } from '@napi-rs/canvas';
 import * as path from 'path';
+import { ASSETS, COLOR, PAD, bevel, card, text, toPng } from './cardStyle';
 
 /** The fields of an rs-mcp get_stats result that the card uses. */
 export interface PlayerStats {
@@ -13,48 +13,9 @@ export interface PlayerStats {
   skills: { skill: string; level: number; xp: number }[];
 }
 
-// Most cards per reply, in case Gemini looks up several players at once.
-const MAX_CARDS = 3;
-
-/**
- * The get_stats results in a reply's automatic function calling history, one per player, so
- * the reply can show them as cards. Failed or unrecognised results are skipped.
- */
-export function statsFromHistory(history: Content[] | undefined): PlayerStats[] {
-  const byName = new Map<string, PlayerStats>();
-  for (const content of history ?? []) {
-    for (const part of content.parts ?? []) {
-      const response = part.functionResponse;
-      if (response?.name !== 'get_stats') continue;
-      const stats = parseStats(response.response);
-      if (stats) byName.set(stats.rsn.toLowerCase(), stats);
-    }
-  }
-  return [...byName.values()].slice(0, MAX_CARDS);
+export function isPlayerStats(value: any): value is PlayerStats {
+  return typeof value?.rsn === 'string' && Array.isArray(value.skills);
 }
-
-// mcpToTool passes the MCP CallToolResult through: { content: [{ type: 'text', text: json }] }.
-function parseStats(result: unknown): PlayerStats | null {
-  const r = result as { isError?: boolean; content?: { type?: string; text?: string }[] } | undefined;
-  if (!r || r.isError) return null;
-  const text = r.content?.find((c) => c.type === 'text')?.text;
-  if (!text) return null;
-  try {
-    const stats = JSON.parse(text) as PlayerStats;
-    return typeof stats.rsn === 'string' && Array.isArray(stats.skills) ? stats : null;
-  } catch {
-    return null;
-  }
-}
-
-// --- rendering ---------------------------------------------------------------------------
-// Drawn at the game's own pixel size, then scaled up with nearest-neighbour so the pixel
-// fonts and icons stay crisp. Icons are from the OSRS Wiki; fonts from RuneStar (CC0).
-
-const ASSETS = path.join(__dirname, '..', 'assets', 'osrs');
-GlobalFonts.registerFromPath(path.join(ASSETS, 'fonts', 'RuneScape-Plain-12.ttf'), 'RS Plain');
-GlobalFonts.registerFromPath(path.join(ASSETS, 'fonts', 'RuneScape-Bold-12.ttf'), 'RS Bold');
-GlobalFonts.registerFromPath(path.join(ASSETS, 'fonts', 'RuneScape-Plain-11.ttf'), 'RS Small');
 
 // The in-game skills tab is 3 columns by 8 rows. Its rows 1-4 go on the left and 5-8 on the
 // right, because Discord shows a wide image much larger than a tall one.
@@ -65,8 +26,6 @@ const GRID = [
   ['Ranged', 'Thieving', 'Cooking', 'Construction', 'Hunter', 'Sailing'],
 ];
 
-const SCALE = 2;
-const PAD = 6;
 const CELL_W = 62;
 const CELL_H = 32;
 const GAP = 2;
@@ -74,22 +33,8 @@ const HEADER_H = 34;
 const TOTAL_H = 26;
 const FOOTER_H = 14;
 const COLS = GRID[0].length;
-const W = PAD * 2 + CELL_W * COLS + GAP * (COLS - 1);
+export const CARD_W = PAD * 2 + CELL_W * COLS + GAP * (COLS - 1);
 const H = PAD + HEADER_H + (CELL_H + GAP) * GRID.length + TOTAL_H + FOOTER_H + PAD;
-
-const COLOR = {
-  edge: '#2b241b',
-  bg: '#3e3529',
-  cell: '#4a4134',
-  hi: '#6b5f4c',
-  lo: '#2a241c',
-  yellow: '#ffff00',
-  orange: '#ff981f',
-  white: '#ffffff',
-  grey: '#9f9f9f',
-  barBg: '#1b1712',
-  bar: '#00c000',
-};
 
 // XP needed for each level, 1-99.
 const LEVEL_XP = (() => {
@@ -113,46 +58,12 @@ function loadIcons(): Promise<Map<string, Image>> {
   return icons;
 }
 
-interface TextStyle {
-  font?: string;
-  color?: string;
-  align?: 'left' | 'right' | 'center';
-}
-
-function text(ctx: SKRSContext2D, str: string, x: number, y: number, style: TextStyle = {}): void {
-  ctx.font = style.font ?? '16px "RS Plain"';
-  ctx.textAlign = style.align ?? 'left';
-  ctx.fillStyle = '#000';
-  ctx.fillText(str, x + 1, y + 1);
-  ctx.fillStyle = style.color ?? COLOR.yellow;
-  ctx.fillText(str, x, y);
-}
-
-function bevel(ctx: SKRSContext2D, x: number, y: number, w: number, h: number): void {
-  ctx.fillStyle = COLOR.cell;
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = COLOR.hi;
-  ctx.fillRect(x, y, w, 1);
-  ctx.fillRect(x, y, 1, h);
-  ctx.fillStyle = COLOR.lo;
-  ctx.fillRect(x, y + h - 1, w, 1);
-  ctx.fillRect(x + w - 1, y, 1, h);
-}
-
 /** A PNG of the player's skills, laid out like the in-game skills tab. */
 export async function renderStatsCard(stats: PlayerStats): Promise<Buffer> {
   const icon = await loadIcons();
   const skills = new Map(stats.skills.map((s) => [s.skill, s]));
-
-  const canvas = createCanvas(W, H);
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  ctx.textBaseline = 'alphabetic';
-
-  ctx.fillStyle = COLOR.edge;
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = COLOR.bg;
-  ctx.fillRect(1, 1, W - 2, H - 2);
+  const W = CARD_W;
+  const { canvas, ctx } = card(W, H);
 
   const type = stats.account_type === 'regular' ? '' : `  ·  ${stats.account_type.replace(/_/g, ' ')}`;
   text(ctx, stats.rsn, PAD + 1, PAD + 13, { font: '16px "RS Bold"', color: COLOR.orange });
@@ -188,7 +99,7 @@ export async function renderStatsCard(stats: PlayerStats): Promise<Buffer> {
       const barW = CELL_W - 8;
       ctx.fillStyle = COLOR.barBg;
       ctx.fillRect(x + 4, y + CELL_H - 5, barW, 2);
-      ctx.fillStyle = maxed ? COLOR.orange : COLOR.bar;
+      ctx.fillStyle = maxed ? COLOR.orange : COLOR.green;
       ctx.fillRect(x + 4, y + CELL_H - 5, Math.round(barW * progress), 2);
     });
   });
@@ -210,9 +121,5 @@ export async function renderStatsCard(stats: PlayerStats): Promise<Buffer> {
     align: 'center',
   });
 
-  const out = createCanvas(W * SCALE, H * SCALE);
-  const outCtx = out.getContext('2d');
-  outCtx.imageSmoothingEnabled = false;
-  outCtx.drawImage(canvas, 0, 0, W * SCALE, H * SCALE);
-  return out.encode('png');
+  return toPng(canvas);
 }

@@ -30,12 +30,14 @@ cp config.json.example config.json
 - `osrs_mcp_url`, `osrs_mcp_token` - Optional. The public endpoint of the
   [rs-mcp](https://github.com/Bluefire2/rs-mcp) server and its bearer token. When both are set,
   Gemini can look up Old School RuneScape data (stats, boss kill counts, quests, diaries, gains,
-  GE prices) for any player by name. The endpoint serves public data only. If it can't be
-  reached, the bot answers without these tools. The production token is in the rs-mcp project's
-  Secret Manager as `osrs-mcp-public-api-tokens`. When Gemini looks up a player's stats, the
-  reply gets an image of their skills tab (`src/statsCard.ts`; skill icons from the
-  [OSRS Wiki](https://oldschool.runescape.wiki), fonts from
-  [RuneStar/fonts](https://github.com/RuneStar/fonts) under CC0, both in `assets/osrs/`).
+  GE prices and price history) for any player by name, and read OSRS Wiki pages for game
+  knowledge. The endpoint serves public data only. If it can't be reached, the bot answers
+  without these tools. The production token is in the rs-mcp project's Secret Manager as
+  `osrs-mcp-public-api-tokens`. Replies get image cards (`src/cards.ts`): a player's skills tab
+  when their stats are looked up, and a price chart when an item's price history is. Skill
+  icons are from the [OSRS Wiki](https://oldschool.runescape.wiki) and fonts from
+  [RuneStar/fonts](https://github.com/RuneStar/fonts) under CC0, both in `assets/osrs/`; item
+  icons for the price chart are fetched from the Wiki when needed.
 
 **Getting a Gemini API Key:**
 1. Go to https://aistudio.google.com/app/apikey
