@@ -39,10 +39,13 @@ cp config.json.example config.json
   [RuneStar/fonts](https://github.com/RuneStar/fonts) under CC0, both in `assets/osrs/`; item
   icons for the price chart are fetched from the Wiki when needed.
 
-  Users can save their RuneScape name by tagging the bot with `--setRsn <name>` (and check or
-  clear it with `--getRsn` / `--removeRsn`), so "what are my stats?" works without asking. The
-  name is per Discord user, the same in every server and DMs, and stored in `serverConfig.json`
-  under `users`. Saved names of the people in the conversation are passed to Gemini.
+  Users can save their RuneScape name by just telling the bot ("set my rsn to Lynx Titan",
+  "forget my rsn"), which Gemini does with the `set_my_rsn` / `clear_my_rsn` tools
+  (`src/rsnTool.ts`), or with `--setRsn <name>`, `--getRsn` and `--removeRsn`. Then "what are my
+  stats?" works without asking. The tools are bound to the message's author, so nobody can set
+  someone else's name. The name is per Discord user, the same in every server and DMs, and
+  stored in `serverConfig.json` under `users`. Saved names of the people in the conversation
+  are passed to Gemini.
 
 **Getting a Gemini API Key:**
 1. Go to https://aistudio.google.com/app/apikey

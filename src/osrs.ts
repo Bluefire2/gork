@@ -29,6 +29,9 @@ export class OsrsTool implements CallableTool {
   // Shared by concurrent messages; replaced only by whoever finds it broken.
   private connection: Promise<Connection> | null = null;
   private retryAfter = 0;
+  // The server's tool names, from the last successful connect. Gemini's automatic function
+  // calling hands every tool all of a turn's calls, so the rest belong to other tools.
+  private names = new Set<string>();
 
   constructor(private readonly url: string, private readonly token: string) {}
 
@@ -52,7 +55,11 @@ export class OsrsTool implements CallableTool {
     return (await this.connected()).tool.tool();
   }
 
-  async callTool(functionCalls: FunctionCall[]): Promise<Part[]> {
+  async callTool(calls: FunctionCall[]): Promise<Part[]> {
+    const functionCalls = calls.filter((call) => this.names.has(call.name ?? ''));
+    if (functionCalls.length === 0) {
+      return [];
+    }
     for (const call of functionCalls) {
       console.log(`OSRS tool call: ${call.name} ${JSON.stringify(call.args ?? {})}`);
     }
@@ -87,7 +94,9 @@ export class OsrsTool implements CallableTool {
     try {
       await client.connect(transport, { timeout: CONNECT_TIMEOUT_MS });
       const tool = mcpToTool(client, { timeout: CALL_TIMEOUT_MS });
-      await tool.tool(); // lists the tools now, so a broken server shows up here
+      // Lists the tools now, so a broken server shows up here
+      const declarations = (await tool.tool()).functionDeclarations ?? [];
+      this.names = new Set(declarations.map((d) => d.name ?? ''));
       return { client, tool };
     } catch (error) {
       await client.close().catch(() => undefined);

@@ -5,6 +5,7 @@ import { parseFlags, BotFlags } from './flags';
 import { handleServerConfigCommand } from './commands';
 import { getServerSetting } from './serverConfig';
 import { OsrsTool } from './osrs';
+import { RsnTool } from './rsnTool';
 import { replyCards } from './cards';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -192,8 +193,12 @@ client.on('messageCreate', async (message) => {
         const response = await genAI.models.generateContent({
           model: model,
           contents: prompt,
+          // The RSN tool comes with the OSRS tools, and can only change this author's saved name
           config: osrs
-            ? { tools: [osrs], automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS } }
+            ? {
+                tools: [osrs, new RsnTool(message.author.id)],
+                automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS },
+              }
             : undefined,
         });
         const text = response.text;
