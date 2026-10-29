@@ -1,5 +1,5 @@
 import { Message } from 'discord.js';
-import { getServerSetting, setServerSetting, getServerSettings, removeServerSetting, getFlagType, parseFlagValue } from './serverConfig';
+import { getServerSetting, setServerSetting, getServerSettings, removeServerSetting, getFlagType, parseFlagValue, getUserRsn, setUserRsn, removeUserRsn } from './serverConfig';
 import { BUILD_ID, BUILD_TIMESTAMP } from './version';
 
 /**
@@ -17,12 +17,19 @@ export interface CommandResult {
  *   --getFlag="flagName" - Gets a flag value and its type
  *   --listFlags - Lists all flags for the server
  *   --removeFlag="flagName" - Removes a flag
- * 
+ *   --setRsn <name> / --getRsn / --removeRsn - The author's Old School RuneScape name (any server or DM)
+ *
  * @param message - The Discord message
  * @param content - The message content (with bot mention removed)
  * @returns CommandResult indicating if the command was handled
  */
 export function handleServerConfigCommand(message: Message, content: string): CommandResult {
+  // RuneScape names are per user, so these work in DMs too
+  const rsnResult = handleRsnCommand(message.author.id, content);
+  if (rsnResult.handled) {
+    return rsnResult;
+  }
+
   // Only handle commands in guilds (servers), not DMs
   if (!message.guild) {
     return { handled: false };
@@ -162,6 +169,55 @@ export function handleServerConfigCommand(message: Message, content: string): Co
   }
 
   // No command matched
+  return { handled: false };
+}
+
+// Jagex display names: 1-12 letters, digits, spaces, hyphens and underscores
+const RSN_PATTERN = /^[A-Za-z0-9 _-]{1,12}$/;
+
+/**
+ * Handles --setRsn <name>, --getRsn and --removeRsn, which save the author's Old School
+ * RuneScape name so questions about "my" account can be answered without asking for it.
+ * @param userId - The Discord user ID of the message author
+ * @param content - The message content (with bot mention removed)
+ * @returns CommandResult indicating if the command was handled
+ */
+export function handleRsnCommand(userId: string, content: string): CommandResult {
+  const setRsnMatch = content.match(/--setRsn\b(.*)/i);
+  if (setRsnMatch) {
+    const rsn = setRsnMatch[1].trim().replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').trim();
+    if (!RSN_PATTERN.test(rsn)) {
+      return {
+        handled: true,
+        response: `❌ That isn't a valid RuneScape name (1-12 letters, numbers, spaces, - or _). Usage: \`--setRsn Lynx Titan\``
+      };
+    }
+    setUserRsn(userId, rsn);
+    return {
+      handled: true,
+      response: `✅ Saved your RuneScape name as \`${rsn}\`. Ask me about "my stats" any time.`
+    };
+  }
+
+  if (content.match(/--getRsn\b/i)) {
+    const rsn = getUserRsn(userId);
+    return {
+      handled: true,
+      response: rsn
+        ? `📋 Your RuneScape name is \`${rsn}\``
+        : `❌ You haven't saved a RuneScape name. Usage: \`--setRsn Lynx Titan\``
+    };
+  }
+
+  if (content.match(/--removeRsn\b/i)) {
+    return {
+      handled: true,
+      response: removeUserRsn(userId)
+        ? `✅ Removed your RuneScape name`
+        : `⚠️ You hadn't saved a RuneScape name`
+    };
+  }
+
   return { handled: false };
 }
 

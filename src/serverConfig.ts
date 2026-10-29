@@ -38,6 +38,17 @@ interface ServerConfigData {
   servers: {
     [guildId: string]: ServerSettings;
   };
+  // Per-user settings, the same in every server (a RuneScape name belongs to the person)
+  users?: {
+    [userId: string]: UserSettings;
+  };
+}
+
+/**
+ * Structure for per-user settings
+ */
+export interface UserSettings {
+  rsn?: string; // Old School RuneScape name, set with --setRsn
 }
 
 /**
@@ -86,7 +97,11 @@ function loadConfig(): ServerConfigData {
  */
 function saveConfig(config: ServerConfigData): void {
   try {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    // Write a temp file and rename it over the config, so a crash mid-write can't leave a
+    // half-written file (which loadConfig would read as empty, and the next save would keep)
+    const tempPath = `${configPath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(config, null, 2), 'utf-8');
+    fs.renameSync(tempPath, configPath);
   } catch (error) {
     console.error('Error saving server config:', error);
   }
@@ -180,6 +195,46 @@ export function removeServer(guildId: string): void {
     delete config.servers[guildId];
     saveConfig(config);
   }
+}
+
+/**
+ * Gets a user's saved Old School RuneScape name
+ * @param userId - The Discord user ID
+ * @returns The RuneScape name, or undefined if not set
+ */
+export function getUserRsn(userId: string): string | undefined {
+  return loadConfig().users?.[userId]?.rsn;
+}
+
+/**
+ * Saves a user's Old School RuneScape name
+ * @param userId - The Discord user ID
+ * @param rsn - The RuneScape name
+ */
+export function setUserRsn(userId: string, rsn: string): void {
+  const config = loadConfig();
+  config.users ??= {};
+  config.users[userId] = { ...config.users[userId], rsn };
+  saveConfig(config);
+}
+
+/**
+ * Removes a user's saved Old School RuneScape name
+ * @param userId - The Discord user ID
+ * @returns True if a name was saved
+ */
+export function removeUserRsn(userId: string): boolean {
+  const config = loadConfig();
+  const user = config.users?.[userId];
+  if (!user?.rsn) {
+    return false;
+  }
+  delete user.rsn;
+  if (Object.keys(user).length === 0) {
+    delete config.users![userId];
+  }
+  saveConfig(config);
+  return true;
 }
 
 /**

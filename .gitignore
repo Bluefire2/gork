@@ -4,4 +4,4 @@ dist/
 .env
 config.json
 serverConfig.json
-
+serverConfig.json.tmp
