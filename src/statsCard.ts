@@ -9,8 +9,9 @@ export interface PlayerStats {
   fetched_at: string;
   total_level: number;
   total_xp: number;
-  combat_level: number;
-  skills: { skill: string; level: number; xp: number }[];
+  combat_level: number | null;
+  // level and xp are null when the hiscores have no data for the skill
+  skills: { skill: string; level: number | null; xp: number | null }[];
 }
 
 export function isPlayerStats(value: any): value is PlayerStats {
@@ -67,7 +68,7 @@ export async function renderStatsCard(stats: PlayerStats): Promise<Buffer> {
 
   const type = stats.account_type === 'regular' ? '' : `  ·  ${stats.account_type.replace(/_/g, ' ')}`;
   text(ctx, stats.rsn, PAD + 1, PAD + 13, { font: '16px "RS Bold"', color: COLOR.orange });
-  text(ctx, `Combat level: ${stats.combat_level}${type}`, PAD + 1, PAD + 28, { color: COLOR.white });
+  text(ctx, `Combat level: ${stats.combat_level ?? '?'}${type}`, PAD + 1, PAD + 28, { color: COLOR.white });
 
   const gridY = PAD + HEADER_H;
   GRID.forEach((row, r) => {
@@ -79,19 +80,19 @@ export async function renderStatsCard(stats: PlayerStats): Promise<Buffer> {
       const img = icon.get(name)!;
       ctx.drawImage(img, x + 4 + Math.floor((25 - img.width) / 2), y + 3 + Math.floor((25 - img.height) / 2));
 
-      // Skills missing from the hiscores are below its cut-off; show them as level 1.
+      // Skills the hiscores have no data for (below their cut-off) show as a dash.
       const skill = skills.get(name);
-      const level = skill?.level ?? 1;
-      const maxed = level >= 99;
-      text(ctx, String(level), x + CELL_W - 5, y + 19, {
+      const level = skill?.level ?? null;
+      const maxed = level !== null && level >= 99;
+      text(ctx, level === null ? '-' : String(level), x + CELL_W - 5, y + 19, {
         font: '16px "RS Bold"',
         color: maxed ? COLOR.orange : COLOR.yellow,
         align: 'right',
       });
 
-      // Progress to the next level; full and orange at 99.
-      let progress = 1;
-      if (skill && !maxed) {
+      // Progress to the next level; full and orange at 99, empty with no data.
+      let progress = level === null ? 0 : 1;
+      if (skill && level !== null && skill.xp !== null && !maxed) {
         const from = LEVEL_XP[level];
         const to = LEVEL_XP[level + 1];
         progress = Math.max(0, Math.min(1, (skill.xp - from) / (to - from)));
