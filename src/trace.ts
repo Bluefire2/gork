@@ -35,6 +35,8 @@ export interface Trace {
   model?: string;
   prompt?: string;
   toolCalls?: ToolCall[];
+  // Gemini wanted more tool calls than allowed, and was asked to answer without them
+  toolLimitReached?: boolean;
   response?: string;
   // IDs of the messages the bot sent in reply
   replies: string[];

@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, Events, Message, MessageReplyOptions, OmitPartialGroupDMChannel } from 'discord.js';
-import { GoogleGenAI } from '@google/genai';
+import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import { buildPrompt, MESSAGE_HISTORY_LIMIT } from './prompt';
 import { parseFlags, BotFlags } from './flags';
 import { handleServerConfigCommand } from './commands';
@@ -98,8 +98,12 @@ if (!osrsTool) {
   console.log('OSRS tools disabled: osrs_mcp_url / osrs_mcp_token not set in config.json');
 }
 
-// Upper bound on tool calls per reply
-const MAX_TOOL_CALLS = 6;
+// Upper bound on rounds of tool calls per reply. Wiki pages are read a section at a time, so
+// research questions take several. Past this, Gemini answers with what it has.
+const MAX_TOOL_CALLS = 10;
+// Sent after the last round's results. Turning function calling off alone isn't enough: the
+// model still asks for another tool, with no text.
+const OUT_OF_TOOL_CALLS = 'You have no tool calls left. Answer now with what you have found, and say what you could not look up.';
 
 // Create a new client instance
 const client = new Client({
@@ -218,19 +222,40 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
   log(prompt);
   log('---');
 
+  // The RSN tool comes with the OSRS tools, and can only change this author's saved name
+  const tools = osrs ? [traced(osrs, trace), traced(new RsnTool(message.author.id), trace)] : undefined;
+
   // Call Gemini API
   const response = await genAI.models.generateContent({
     model: model,
     contents: prompt,
-    // The RSN tool comes with the OSRS tools, and can only change this author's saved name
-    config: osrs
-      ? {
-          tools: [traced(osrs, trace), traced(new RsnTool(message.author.id), trace)],
-          automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS },
-        }
-      : undefined,
+    config: tools ? { tools, automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS } } : undefined,
   });
-  const text = response.text;
+  const history = response.automaticFunctionCallingHistory;
+
+  // If Gemini was still calling tools when the rounds ran out, the SDK returns that last call
+  // (already run, its result never sent back) and there is no text. Send the results and ask
+  // for an answer with tools off.
+  let text: string | undefined;
+  if (tools && response.functionCalls?.length) {
+    console.log(`Tool call limit (${MAX_TOOL_CALLS}) reached; asking for an answer without tools`);
+    trace.toolLimitReached = true;
+    const final = await genAI.models.generateContent({
+      model: model,
+      contents: [
+        ...(history ?? [{ role: 'user', parts: [{ text: prompt }] }]),
+        { role: 'user', parts: [{ text: OUT_OF_TOOL_CALLS }] },
+      ],
+      config: {
+        tools,
+        toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.NONE } },
+        automaticFunctionCalling: { disable: true },
+      },
+    });
+    text = final.text;
+  } else {
+    text = response.text;
+  }
   trace.response = text;
 
   // Log the response from Gemini
@@ -240,7 +265,7 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
   log('---');
 
   // Cards for any players' stats or item price histories looked up, attached to the first reply
-  const files = await replyCards(response.automaticFunctionCallingHistory);
+  const files = await replyCards(history);
 
   // Check if we got a valid response
   if (!text || text.trim().length === 0) {

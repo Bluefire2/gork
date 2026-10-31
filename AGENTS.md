@@ -48,6 +48,7 @@ Each mention gork handles is saved to `/opt/gork/traces/<message ID>.json` (newe
 mode 600): build ID, guild/channel/author, parsed flags, model, the **full prompt** (which
 includes the channel history as the bot saw it) and how many history messages it used, each
 tool call as it ran (so calls before a failed Gemini request are kept) with long strings truncated,
+whether the tool-call limit was reached,
 the response, any error with its stack, and the IDs of the bot's reply messages.
 
 A bug report is usually a Discord message link,
