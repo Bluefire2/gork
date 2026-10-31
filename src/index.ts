@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Events, Message, MessageReplyOptions, OmitPartialGroupDMChannel } from 'discord.js';
 import { GoogleGenAI } from '@google/genai';
 import { buildPrompt, MESSAGE_HISTORY_LIMIT } from './prompt';
 import { parseFlags, BotFlags } from './flags';
@@ -7,6 +7,8 @@ import { getServerSetting } from './serverConfig';
 import { OsrsTool } from './osrs';
 import { RsnTool } from './rsnTool';
 import { replyCards } from './cards';
+import { newTrace, saveTrace, traced, Trace } from './trace';
+import { BUILD_ID } from './version';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -124,123 +126,146 @@ client.on('messageCreate', async (message) => {
   // Ignore messages from bots
   if (message.author.bot) return;
 
-    // Check if the bot is mentioned in the message
-    if (message.mentions.has(client.user!)) {
-      // Extract the message content, removing the bot mention
-      const rawMessageContent = message.content
-        .replace(new RegExp(`<@!?${client.user?.id}>`, 'g'), '')
-        .trim();
+  // Check if the bot is mentioned in the message
+  if (!message.mentions.has(client.user!)) return;
 
-      // If there's no message after the mention, send a default response
-      if (!rawMessageContent) {
-        await message.reply('Hello! How can I help you?');
-        return;
-      }
-
-      // Parse flags from the message
-      const { flags, content: userMessageContent } = parseFlags(rawMessageContent);
-
-      // Check if this is a server config command (handles before LLM call)
-      const commandResult = handleServerConfigCommand(message, rawMessageContent);
-      if (commandResult.handled) {
-        await message.reply(commandResult.response || 'Command processed.');
-        return;
-      }
-
-      // If there's no content after removing flags, send a default response
-      if (!userMessageContent) {
-        await message.reply('Hello! How can I help you?');
-        return;
-      }
-
-      try {
-        // Show typing indicator
-        await message.channel.sendTyping();
-
-        // Fetch previous messages for context
-        // Priority: server-level context flag > per-message flag > default
-        // Cap at 100 messages maximum
-        const serverContext = message.guild ? getServerSetting<number>(message.guild.id, 'context') : undefined;
-        const contextLimit = Math.min(100, serverContext ?? flags.context ?? MESSAGE_HISTORY_LIMIT);
-        const previousMessages = await message.channel.messages.fetch({ 
-          limit: contextLimit,
-          before: message.id 
-        });
-        
-        // Convert to array and reverse to get chronological order (oldest to newest)
-        // Exclude the current message and bot's own messages from history
-        const messageHistory = Array.from(previousMessages.values())
-          .filter(msg => !msg.author.bot || msg.author.id === client.user?.id)
-          .reverse();
-
-        // OSRS tools, unless the server can't be reached right now
-        const osrs = osrsTool ? await osrsTool.ifAvailable() : null;
-
-        // Build the prompt for Gemini with message history
-        // Pass the cleaned content (without flags) as an override
-        const prompt = buildPrompt(message, messageHistory, client.user?.id, userMessageContent, osrs !== null);
-
-        // Determine which model to use based on flags
-        const model = flags.advanced ? GEMINI_MODEL_ADVANCED : GEMINI_MODEL_REGULAR;
-
-        // Log the prompt being sent to Gemini
-        log(`Prompt being sent to Gemini (model: ${model}):`);
-        log('---');
-        log(prompt);
-        log('---');
-
-        // Call Gemini API
-        const response = await genAI.models.generateContent({
-          model: model,
-          contents: prompt,
-          // The RSN tool comes with the OSRS tools, and can only change this author's saved name
-          config: osrs
-            ? {
-                tools: [osrs, new RsnTool(message.author.id)],
-                automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS },
-              }
-            : undefined,
-        });
-        const text = response.text;
-
-        // Log the response from Gemini
-        log('Response from Gemini:');
-        log('---');
-        log(text);
-        log('---');
-
-      // Cards for any players' stats or item price histories looked up, attached to the first reply
-      const files = await replyCards(response.automaticFunctionCallingHistory);
-
-      // Check if we got a valid response
-      if (!text || text.trim().length === 0) {
-        await message.reply(files.length > 0 ? { files } : 'I received an empty response from Gemini.');
-        return;
-      }
-
-      // Discord has a 2000 character limit per message, so we may need to split long responses
-      if (text.length <= 2000) {
-        await message.reply({ content: text, files });
-      } else {
-        // Split into chunks if response is too long
-        const chunks = text.match(/.{1,2000}/g) || [];
-        for (let i = 0; i < chunks.length; i++) {
-          const chunk = chunks[i];
-          if (!chunk) continue;
-
-          if (i === 0) {
-            await message.reply({ content: chunk, files });
-          } else {
-            await message.channel.send(chunk);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error calling Gemini API:', error);
-      await message.reply('Sorry, I encountered an error while processing your request.');
-    }
+  // Everything the bot saw and did for this message, saved for bug reports
+  const trace = newTrace(message, BUILD_ID);
+  const started = Date.now();
+  try {
+    await handleMention(message, trace);
+  } catch (error) {
+    console.error('Error handling message:', error);
+    trace.error = error instanceof Error ? error.stack ?? error.message : String(error);
+    await message.reply('Sorry, I encountered an error while processing your request.').catch(() => {});
+  } finally {
+    trace.durationMs = Date.now() - started;
+    await saveTrace(trace);
   }
 });
+
+async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace: Trace): Promise<void> {
+  // Send a reply and note its ID in the trace
+  const reply = async (options: string | MessageReplyOptions) => {
+    trace.replies.push((await message.reply(options)).id);
+  };
+
+  // Extract the message content, removing the bot mention
+  const rawMessageContent = message.content
+    .replace(new RegExp(`<@!?${client.user?.id}>`, 'g'), '')
+    .trim();
+
+  // If there's no message after the mention, send a default response
+  if (!rawMessageContent) {
+    await reply('Hello! How can I help you?');
+    return;
+  }
+
+  // Parse flags from the message
+  const { flags, content: userMessageContent } = parseFlags(rawMessageContent);
+  trace.flags = flags;
+
+  // Check if this is a server config command (handles before LLM call)
+  const commandResult = handleServerConfigCommand(message, rawMessageContent);
+  if (commandResult.handled) {
+    trace.command = true;
+    trace.response = commandResult.response;
+    await reply(commandResult.response || 'Command processed.');
+    return;
+  }
+
+  // If there's no content after removing flags, send a default response
+  if (!userMessageContent) {
+    await reply('Hello! How can I help you?');
+    return;
+  }
+
+  // Show typing indicator
+  await message.channel.sendTyping();
+
+  // Fetch previous messages for context
+  // Priority: server-level context flag > per-message flag > default
+  // Cap at 100 messages maximum
+  const serverContext = message.guild ? getServerSetting<number>(message.guild.id, 'context') : undefined;
+  const contextLimit = Math.min(100, serverContext ?? flags.context ?? MESSAGE_HISTORY_LIMIT);
+  const previousMessages = await message.channel.messages.fetch({
+    limit: contextLimit,
+    before: message.id
+  });
+
+  // Convert to array and reverse to get chronological order (oldest to newest)
+  // Exclude the current message and bot's own messages from history
+  const messageHistory = Array.from(previousMessages.values())
+    .filter(msg => !msg.author.bot || msg.author.id === client.user?.id)
+    .reverse();
+  trace.context = { limit: contextLimit, messages: messageHistory.length };
+
+  // OSRS tools, unless the server can't be reached right now
+  const osrs = osrsTool ? await osrsTool.ifAvailable() : null;
+
+  // Build the prompt for Gemini with message history
+  // Pass the cleaned content (without flags) as an override
+  const prompt = buildPrompt(message, messageHistory, client.user?.id, userMessageContent, osrs !== null);
+
+  // Determine which model to use based on flags
+  const model = flags.advanced ? GEMINI_MODEL_ADVANCED : GEMINI_MODEL_REGULAR;
+  trace.model = model;
+  trace.prompt = prompt;
+
+  // Log the prompt being sent to Gemini
+  log(`Prompt being sent to Gemini (model: ${model}):`);
+  log('---');
+  log(prompt);
+  log('---');
+
+  // Call Gemini API
+  const response = await genAI.models.generateContent({
+    model: model,
+    contents: prompt,
+    // The RSN tool comes with the OSRS tools, and can only change this author's saved name
+    config: osrs
+      ? {
+          tools: [traced(osrs, trace), traced(new RsnTool(message.author.id), trace)],
+          automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS },
+        }
+      : undefined,
+  });
+  const text = response.text;
+  trace.response = text;
+
+  // Log the response from Gemini
+  log('Response from Gemini:');
+  log('---');
+  log(text);
+  log('---');
+
+  // Cards for any players' stats or item price histories looked up, attached to the first reply
+  const files = await replyCards(response.automaticFunctionCallingHistory);
+
+  // Check if we got a valid response
+  if (!text || text.trim().length === 0) {
+    await reply(files.length > 0 ? { files } : 'I received an empty response from Gemini.');
+    return;
+  }
+
+  // Discord has a 2000 character limit per message, so we may need to split long responses
+  if (text.length <= 2000) {
+    await reply({ content: text, files });
+  } else {
+    // Split into chunks if response is too long
+    const chunks = text.match(/.{1,2000}/g) || [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      if (!chunk) continue;
+
+      if (i === 0) {
+        await reply({ content: chunk, files });
+      } else {
+        trace.replies.push((await message.channel.send(chunk)).id);
+      }
+    }
+  }
+}
 
 // Log in to Discord with your client's token
 client.login(token).catch((error) => {

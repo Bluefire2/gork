@@ -166,6 +166,8 @@ sudo bash /opt/gork/deploy/deploy.sh
 
 Logs: `journalctl -u gork -f`
 
+Traces: every mention the bot handles is saved to `traces/<message ID>.json` (gitignored, newest 500 kept): the parsed flags, model, full prompt and history length, tool calls, response, any error, and the IDs of its replies. Useful for bug reports - see AGENTS.md.
+
 ## Notes
 
 - The bot automatically switches between tokens based on the `TEST_MODE` environment variable

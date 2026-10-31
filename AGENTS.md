@@ -42,6 +42,27 @@ The external IP is ephemeral; nothing depends on it.
 
 Logs: `sudo journalctl -u gork -n 50`.
 
+## Bug reports: traces
+
+Each mention gork handles is saved to `/opt/gork/traces/<message ID>.json` (newest 500 kept,
+mode 600): build ID, guild/channel/author, parsed flags, model, the **full prompt** (which
+includes the channel history as the bot saw it) and how many history messages it used, each
+tool call as it ran (so calls before a failed Gemini request are kept) with long strings truncated,
+the response, any error with its stack, and the IDs of the bot's reply messages.
+
+A bug report is usually a Discord message link,
+`https://discord.com/channels/<guild>/<channel>/<message>`. The last ID is either the user's
+message (the trace's file name) or one of the bot's replies (listed in `replies`). The directory
+is readable only by `gork`, so search it with `sudo` rather than `cd`-ing in:
+
+```bash
+sudo grep -rl '"<message ID>"' /opt/gork/traces
+```
+
+Pruning deletes old traces, but the daily disk snapshots keep them for as long as the snapshots
+are retained. Traces hold other people's messages: read them on the VM, quote only what the
+bug needs, and don't copy whole files off the VM or into commits.
+
 ## Running commands on the VM from Windows
 
 gcloud on Windows uses PuTTY (plink). It stops at a host-key prompt and swallows stdin, so:
