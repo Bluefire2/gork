@@ -7,7 +7,7 @@ import { getServerSetting } from './serverConfig';
 import { OsrsTool } from './osrs';
 import { RsnTool } from './rsnTool';
 import { replyCards } from './cards';
-import { newTrace, saveTrace, traceToolCalls, Trace } from './trace';
+import { newTrace, saveTrace, traced, Trace } from './trace';
 import { BUILD_ID } from './version';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -198,6 +198,7 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
   const messageHistory = Array.from(previousMessages.values())
     .filter(msg => !msg.author.bot || msg.author.id === client.user?.id)
     .reverse();
+  trace.context = { limit: contextLimit, messages: messageHistory.length };
 
   // OSRS tools, unless the server can't be reached right now
   const osrs = osrsTool ? await osrsTool.ifAvailable() : null;
@@ -224,13 +225,12 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
     // The RSN tool comes with the OSRS tools, and can only change this author's saved name
     config: osrs
       ? {
-          tools: [osrs, new RsnTool(message.author.id)],
+          tools: [traced(osrs, trace), traced(new RsnTool(message.author.id), trace)],
           automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS },
         }
       : undefined,
   });
   const text = response.text;
-  trace.toolCalls = traceToolCalls(response.automaticFunctionCallingHistory);
   trace.response = text;
 
   // Log the response from Gemini

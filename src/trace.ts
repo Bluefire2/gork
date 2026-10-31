@@ -1,4 +1,4 @@
-import { Content } from '@google/genai';
+import { CallableTool, FunctionCall, Part, Tool } from '@google/genai';
 import { Message } from 'discord.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -12,6 +12,12 @@ const MAX_TRACES = 500;
 // Tool results can be large (a whole bank, a price history); the prompt and response are kept whole.
 const MAX_TOOL_STRING = 4000;
 
+export interface ToolCall {
+  name?: string;
+  args?: unknown;
+  response?: unknown;
+}
+
 export interface Trace {
   build: string;
   time: string;
@@ -22,11 +28,13 @@ export interface Trace {
   author: string;
   content: string;
   flags?: BotFlags;
+  // History actually fetched: the limit after server setting and cap, and the messages kept
+  context?: { limit: number; messages: number };
   // true when a server config command answered instead of Gemini
   command?: boolean;
   model?: string;
   prompt?: string;
-  toolCalls?: unknown;
+  toolCalls?: ToolCall[];
   response?: string;
   // IDs of the messages the bot sent in reply
   replies: string[];
@@ -46,13 +54,43 @@ export function newTrace(message: Message, build: string): Trace {
   };
 }
 
-/** The automatic function calling history, with long strings cut short. */
-export function traceToolCalls(history: Content[] | undefined): unknown {
-  if (!history?.length) return undefined;
-  return JSON.parse(JSON.stringify(history, (_key, value) =>
-    typeof value === 'string' && value.length > MAX_TOOL_STRING
-      ? `${value.slice(0, MAX_TOOL_STRING)}... [${value.length - MAX_TOOL_STRING} more chars]`
-      : value));
+// Long strings cut short. Never throws: tracing must not affect the reply.
+function truncated(value: unknown): unknown {
+  try {
+    return JSON.parse(JSON.stringify(value, (_key, v) =>
+      typeof v === 'string' && v.length > MAX_TOOL_STRING
+        ? `${v.slice(0, MAX_TOOL_STRING)}... [${v.length - MAX_TOOL_STRING} more chars]`
+        : v));
+  } catch {
+    return '[could not record]';
+  }
+}
+
+/**
+ * Wraps a tool so each call it answers is added to the trace as it happens, so the calls made
+ * before a failed Gemini request are still recorded.
+ */
+export function traced(tool: CallableTool, trace: Trace): CallableTool {
+  return {
+    tool: (): Promise<Tool> => tool.tool(),
+    async callTool(calls: FunctionCall[]): Promise<Part[]> {
+      const parts = await tool.callTool(calls);
+      // Without IDs, calls to the same function are matched in order
+      const unmatched = [...calls];
+      for (const part of parts) {
+        const response = part.functionResponse;
+        if (!response) continue;
+        const i = unmatched.findIndex((c) => (response.id ? c.id === response.id : c.name === response.name));
+        const call = i >= 0 ? unmatched.splice(i, 1)[0] : undefined;
+        (trace.toolCalls ??= []).push({
+          name: response.name,
+          args: truncated(call?.args),
+          response: truncated(response.response),
+        });
+      }
+      return parts;
+    },
+  };
 }
 
 /**
