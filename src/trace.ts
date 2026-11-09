@@ -41,6 +41,19 @@ export interface Trace {
   // IDs of the messages the bot sent in reply
   replies: string[];
   error?: string;
+  // Deep research: what this mention did about it (the run itself is in researchJobs.json)
+  research?: ResearchTrace;
+}
+
+export interface ResearchTrace {
+  // A proposal was posted, and the user asked to confirm
+  proposal?: { brief: string; questions: string[]; agent: string };
+  // The user confirmed a proposal, starting this interaction
+  jobId?: string;
+  // The user cancelled a pending proposal
+  dropped?: boolean;
+  // A run or proposal was refused, and why
+  refused?: string;
 }
 
 export function newTrace(message: Message, build: string): Trace {

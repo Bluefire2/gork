@@ -18,6 +18,8 @@ export const FLAG_TYPES: Record<string, FlagType> = {
   runescape: 'boolean',
   context: 'number',
   personality: 'string',
+  research: 'boolean', // deep-research runs allowed on this server (default: yes)
+  researchDaily: 'number', // deep-research runs per server per day (default in research.ts)
   // Add more flag definitions here
   // enabled: 'boolean',
   // prefix: 'string',

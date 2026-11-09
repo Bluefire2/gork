@@ -6,3 +6,6 @@ config.json
 serverConfig.json
 serverConfig.json.tmp
 traces/
+researchJobs.json
+researchJobs.json.tmp
+research/

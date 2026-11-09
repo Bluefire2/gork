@@ -4,6 +4,7 @@
 export interface BotFlags {
   advanced: boolean;
   context: number; // Number of previous messages to include as context
+  research: boolean; // Propose a deep-research run instead of answering (--research / -r)
 }
 
 /**
@@ -16,6 +17,7 @@ export function parseFlags(messageContent: string): { flags: BotFlags; content: 
   const flags: BotFlags = {
     advanced: false,
     context: 20, // Default value
+    research: false,
   };
 
   // Split the message into words
@@ -26,6 +28,8 @@ export function parseFlags(messageContent: string): { flags: BotFlags; content: 
   for (const word of words) {
     if (word === '--advanced' || word === '-a') {
       flags.advanced = true;
+    } else if (word === '--research' || word === '-r') {
+      flags.research = true;
     } else if (word.startsWith('--context=') || word.startsWith('-c=')) {
       // Parse --context=N or -c=N
       const value = word.split('=')[1];

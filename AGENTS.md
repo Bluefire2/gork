@@ -16,7 +16,12 @@ The pre-commit hook (`.githooks/pre-commit`, enabled by `npm install`) regenerat
 | Service | systemd `gork.service` (unit source: `deploy/gork.service`) |
 | Secrets | `/opt/gork/config.json` (mode 600, owner `gork`) - never in the repo or in chat |
 | Per-server settings | `/opt/gork/serverConfig.json` - written by the bot, the only copy, keep it |
+| Deep-research runs | `/opt/gork/researchJobs.json` (keep it: it resumes runs after a restart) and reports in `/opt/gork/research/` |
 | Gemini key | the "Discord" API key in the same GCP project |
+
+Deep research uses the Interactions API, which needs `@google/genai` 2.x. Don't move to 3.x
+without checking: it needs Node 22 (the VM has 22.22 as of 2026-11) and changes the default
+API version from `v1beta` to `v1`.
 
 The external IP is ephemeral; nothing depends on it.
 
@@ -33,6 +38,9 @@ The external IP is ephemeral; nothing depends on it.
 3. Verify in Discord - the script's check does not cover the Gemini calls:
    - `--version` shows the `BUILD_ID` from `src/version.ts` at the deployed commit
    - one normal message and one with `--advanced` both get answers
+   - if the change touched deep research: `--research <question>` posts a proposal (costs
+     nothing until confirmed), and the journal shows `Resuming N deep-research job(s)` if any
+     were running during the restart
 
 **Rollback:** `git revert` the bad commit, push, deploy again. Never edit files in
 `/opt/gork` by hand; the next deploy refuses to fast-forward over local changes.
@@ -63,6 +71,21 @@ sudo grep -rl '"<message ID>"' /opt/gork/traces
 Pruning deletes old traces, but the daily disk snapshots keep them for as long as the snapshots
 are retained. Traces hold other people's messages: read them on the VM, quote only what the
 bug needs, and don't copy whole files off the VM or into commits.
+
+**Deep research** spans several messages and a background run, so it has its own records. The
+mention that got the proposal and the one that confirmed it each have a trace with a `research`
+field (`proposal`, `jobId`, `dropped`, or `refused` with the reason). The run itself is an entry
+in `/opt/gork/researchJobs.json`: the Gemini interaction ID, agent, brief and clarifications,
+requester, the proposal/confirmation/reply message IDs, status, Gemini's final status, any error,
+and where the report went (`dm` or `channel`). The report is `/opt/gork/research/<interaction ID>.md`.
+From a message link:
+
+```bash
+sudo grep -l '"<message ID>"' /opt/gork/researchJobs.json /opt/gork/traces/*
+```
+
+Gemini keeps the interaction for 55 days (paid tier), so `interactions.get(<interaction ID>)`
+with the bot's key shows its side (status, errors, steps).
 
 ## Running commands on the VM from Windows
 
