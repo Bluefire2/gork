@@ -48,6 +48,22 @@ cp config.json.example config.json
   stored in `serverConfig.json` under `users`. Saved names of the people in the conversation
   are passed to Gemini.
 
+**Deep research:** for questions that deserve a proper multi-source investigation, gork can hand
+them to Gemini's Deep Research agent, which takes 5–20 minutes and sends the report by DM
+(`src/research.ts`, `src/researchTool.ts`). Either Gemini proposes it when a question clearly
+calls for it, or the user asks for it with `--research` (`-r`). Either way nothing runs until the
+user confirms: gork posts the research brief and up to three clarifying questions, and the user
+replies to that message with answers (or just "go"), or "cancel". The proposal is forgotten after
+30 minutes, or if the bot restarts. The run then goes to the agent in the background; when it is
+done, the user gets a DM with the start of the report and the whole report attached as Markdown
+(posted in the channel instead if their DMs are closed), and a short "done" reply in the channel.
+`--advanced` with `--research` (or on the confirmation) picks the slower, more thorough "max"
+agent. Each run costs real money (roughly $1–3, max agent $3–7, billed to the Gemini key), so:
+one running job per user, three overall, and a per-server daily limit of 5 (`--setFlag="researchDaily: N"`);
+`--setFlag="research: false"` turns the feature off for a server. Runs are recorded in
+`researchJobs.json` (gitignored; also what resumes polling after a restart) and reports in
+`research/<interaction ID>.md`. Needs `@google/genai` 2.x (Interactions API) and Node 20+.
+
 **Getting a Gemini API Key:**
 1. Go to https://aistudio.google.com/app/apikey
 2. Create a new API key or use an existing one
@@ -167,6 +183,8 @@ sudo bash /opt/gork/deploy/deploy.sh
 Logs: `journalctl -u gork -f`
 
 Traces: every mention the bot handles is saved to `traces/<message ID>.json` (gitignored, newest 500 kept): the parsed flags, model, full prompt and history length, tool calls, response, any error, and the IDs of its replies. Useful for bug reports - see AGENTS.md.
+
+Deep-research runs are in `researchJobs.json` (newest 200 finished kept, running ones always) and their reports in `research/`. Both are written by the bot next to `serverConfig.json`; keep `researchJobs.json` across deploys, or runs in progress at restart are lost.
 
 ## Notes
 

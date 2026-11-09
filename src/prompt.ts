@@ -125,6 +125,7 @@ function knownRsns(currentMessage: Message, messageHistory: Message[], botUserId
  * @param botUserId - The user ID of the bot itself
  * @param contentOverride - Optional content to use instead of the message's content (e.g., after removing flags)
  * @param osrsTools - Whether the Old School RuneScape lookup tools are available for this reply
+ * @param researchTool - Whether Gemini may propose a deep-research run for this reply
  * @returns A formatted prompt string for Gemini
  */
 export function buildPrompt(
@@ -132,7 +133,8 @@ export function buildPrompt(
   messageHistory: Message[],
   botUserId: string | undefined,
   contentOverride?: string,
-  osrsTools = false
+  osrsTools = false,
+  researchTool = false
 ): string {
   // Build the initial system prompt
   const systemPrompt = `You are a helpful and friendly chatbot assistant 
@@ -231,6 +233,21 @@ knowledge such as drop rates, quest requirements, item stats or training methods
 Wiki instead of answering from memory, and say which page the answer came from.`
     : '';
 
+  const researchSection = researchTool
+    ? `
+
+TOOLS - Deep research:
+With propose_deep_research you can propose a deep-research run: a separate agent then spends
+5-20 minutes searching and reading many sources, and ${authorName} gets a report by DM. It costs
+money, and ${authorName} is asked to confirm before it runs, so a proposal is cheap, but only
+propose it when ${authorName} clearly wants a thorough, multi-source investigation that a chat
+answer can't do justice to: a comparison, a survey of options, "research X", "deep dive", "write
+a report on". Never propose it for quick facts, opinions, chat, or Old School RuneScape questions
+your lookup tools answer. The researcher sees only your brief, so put in it whatever context from
+the conversation they need; add up to three clarifying questions only if the answers would change
+the research. If you call it, say nothing else of substance.`
+    : '';
+
   // Check if runescape flag is enabled for this server
   const runescapeSection = isFlagEnabled(currentMessage, 'runescape')
     ? `
@@ -265,6 +282,6 @@ ${sanitizePersonality(personality)}
     : '';
 
   // Combine all sections
-  return systemPrompt + historySection + currentMessageSection + osrsToolsSection + runescapeSection + personalitySection;
+  return systemPrompt + historySection + currentMessageSection + osrsToolsSection + researchSection + runescapeSection + personalitySection;
 }
 

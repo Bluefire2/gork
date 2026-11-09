@@ -6,6 +6,8 @@ import { handleServerConfigCommand } from './commands';
 import { getServerSetting } from './serverConfig';
 import { OsrsTool } from './osrs';
 import { RsnTool } from './rsnTool';
+import { Research } from './research';
+import { PROPOSE_DEEP_RESEARCH, proposalFromArgs, RESEARCH_DECLARATIONS, ResearchTool } from './researchTool';
 import { replyCards } from './cards';
 import { newTrace, saveTrace, traced, Trace } from './trace';
 import { BUILD_ID } from './version';
@@ -104,6 +106,12 @@ const MAX_TOOL_CALLS = 10;
 // Sent after the last round's results. Turning function calling off alone isn't enough: the
 // model still asks for another tool, with no text.
 const OUT_OF_TOOL_CALLS = 'You have no tool calls left. Answer now with what you have found, and say what you could not look up.';
+// Appended to the prompt for --research, where the only allowed move is the proposal tool
+const RESEARCH_BRIEF_INSTRUCTION =
+  'The user asked for deep research with --research. Do not answer their question. Call ' +
+  `${PROPOSE_DEEP_RESEARCH} with a self-contained brief of what they want researched, built from ` +
+  'their message and the conversation, and up to three clarifying questions, only if the answers ' +
+  'would change the research.';
 
 // Create a new client instance
 const client = new Client({
@@ -114,11 +122,17 @@ const client = new Client({
   ],
 });
 
+// Deep-research proposals, confirmations and background runs
+const research = new Research(client, genAI);
+
 // When the client is ready, run this code (only once)
 client.once(Events.ClientReady, async () => {
   console.log(`Bot is ready! Running in ${isTestMode ? 'TEST' : 'REGULAR'} mode`);
   console.log(`Logged in as ${client.user?.tag}`);
-  
+
+  // Runs that were in progress when the bot last stopped
+  research.resume();
+
   // List available models on startup in test mode (useful for debugging)
   if (isTestMode) {
     await listAvailableModels();
@@ -184,6 +198,9 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
     return;
   }
 
+  // A reply to a pending deep-research proposal confirms or cancels it
+  if (await research.handleReply(message, userMessageContent, flags, trace)) return;
+
   // Show typing indicator
   await message.channel.sendTyping();
 
@@ -207,9 +224,12 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
   // OSRS tools, unless the server can't be reached right now
   const osrs = osrsTool ? await osrsTool.ifAvailable() : null;
 
+  // Gemini may propose deep research, unless this person or server can't run one right now
+  const researchTool = research.offersTool(message) ? new ResearchTool() : null;
+
   // Build the prompt for Gemini with message history
   // Pass the cleaned content (without flags) as an override
-  const prompt = buildPrompt(message, messageHistory, client.user?.id, userMessageContent, osrs !== null);
+  const prompt = buildPrompt(message, messageHistory, client.user?.id, userMessageContent, osrs !== null, researchTool !== null);
 
   // Determine which model to use based on flags
   const model = flags.advanced ? GEMINI_MODEL_ADVANCED : GEMINI_MODEL_REGULAR;
@@ -222,22 +242,60 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
   log(prompt);
   log('---');
 
+  // --research: no answer, just a research brief for the user to confirm
+  if (flags.research) {
+    const refusal = research.refusal(message.guildId, message.author.id);
+    if (refusal) {
+      trace.research = { refused: refusal };
+      await reply(refusal);
+      return;
+    }
+    const response = await genAI.models.generateContent({
+      model: model,
+      contents: `${prompt}\n\n${RESEARCH_BRIEF_INSTRUCTION}`,
+      config: {
+        tools: [{ functionDeclarations: RESEARCH_DECLARATIONS }],
+        toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY, allowedFunctionNames: [PROPOSE_DEEP_RESEARCH] } },
+        // Mode ANY with automatic calling would loop: the only allowed response is a tool call
+        automaticFunctionCalling: { disable: true },
+      },
+    });
+    const call = response.functionCalls?.find((c) => c.name === PROPOSE_DEEP_RESEARCH);
+    trace.toolCalls = [{ name: PROPOSE_DEEP_RESEARCH, args: call?.args }];
+    const proposal = call ? proposalFromArgs(call.args) : null;
+    if (!proposal) {
+      await reply("I couldn't turn that into a research brief. Try stating the question in a sentence or two.");
+      return;
+    }
+    await research.propose(message, proposal, flags, trace);
+    return;
+  }
+
   // The RSN tool comes with the OSRS tools, and can only change this author's saved name
-  const tools = osrs ? [traced(osrs, trace), traced(new RsnTool(message.author.id), trace)] : undefined;
+  const tools = [
+    ...(researchTool ? [traced(researchTool, trace)] : []),
+    ...(osrs ? [traced(osrs, trace), traced(new RsnTool(message.author.id), trace)] : []),
+  ];
 
   // Call Gemini API
   const response = await genAI.models.generateContent({
     model: model,
     contents: prompt,
-    config: tools ? { tools, automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS } } : undefined,
+    config: tools.length > 0 ? { tools, automaticFunctionCalling: { maximumRemoteCalls: MAX_TOOL_CALLS } } : undefined,
   });
   const history = response.automaticFunctionCallingHistory;
+
+  // Gemini proposed deep research: ask the user to confirm instead of posting an answer
+  if (researchTool?.proposal) {
+    await research.propose(message, researchTool.proposal, flags, trace);
+    return;
+  }
 
   // If Gemini was still calling tools when the rounds ran out, the SDK returns that last call
   // (already run, its result never sent back) and there is no text. Send the results and ask
   // for an answer with tools off.
   let text: string | undefined;
-  if (tools && response.functionCalls?.length) {
+  if (tools.length > 0 && response.functionCalls?.length) {
     console.log(`Tool call limit (${MAX_TOOL_CALLS}) reached; asking for an answer without tools`);
     trace.toolLimitReached = true;
     const final = await genAI.models.generateContent({
