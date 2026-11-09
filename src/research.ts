@@ -31,9 +31,15 @@ const DISCORD_MESSAGE_LIMIT = 2000;
 const JOBS_PATH = path.join(__dirname, '..', 'researchJobs.json');
 const REPORTS_DIR = path.join(__dirname, '..', 'research');
 
-// Bare answers to a proposal. Anything else in a reply to it is taken as clarifications.
+// Answers in a reply to the proposal. Anything else in such a reply is taken as clarifications.
+// A wrong cancel costs a re-ask; a wrong start costs money, so cancelling is matched loosely
+// ("cancel that", "never mind, thanks") and starting only by whole words.
 const GO_WORDS = /^(go|yes|yes please|yep|y|ok|okay|sure|start|do it|proceed|confirm)\W*$/i;
-const CANCEL_WORDS = /^(no|nah|cancel|stop|never ?mind|forget it|don't|dont)\W*$/i;
+const CANCEL_WORDS = /^(no|nah|nope|no thanks|not now|don't|dont|(cancel|stop|never ?mind|forget it)\b.{0,30})\W*$/i;
+// Without a reply to the proposal, only words that can't be an answer to anything else count:
+// "yes" or "no" to some other question must not start or drop a run.
+const BARE_GO_WORDS = /^(go|start|do it|proceed)\W*$/i;
+const BARE_CANCEL_WORDS = /^(cancel|stop|never ?mind|forget it)\W*$/i;
 
 /** A proposal posted in a channel, waiting for its author to confirm or cancel it. */
 interface Pending {
@@ -152,6 +158,9 @@ function isNotFound(error: unknown): boolean {
  */
 export class Research {
   private readonly pending = new Map<string, Pending>();
+  // Runs being started (user ID -> guild ID): they count against the caps while the Gemini call
+  // is in flight, so two confirmations arriving together can't both pass the checks.
+  private readonly starting = new Map<string, string>();
   private jobs: ResearchJob[];
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
@@ -187,12 +196,16 @@ export class Research {
     if (mine) {
       return `You already have a research run going (started ${minutesSince(mine.startedAt)} min ago); wait for that one to finish.`;
     }
-    if (this.jobs.filter(isRunning).length >= MAX_RUNNING_GLOBAL) {
+    if (this.starting.has(userId)) {
+      return 'Your research run is just starting; wait for that one to finish.';
+    }
+    if (this.jobs.filter(isRunning).length + this.starting.size >= MAX_RUNNING_GLOBAL) {
       return `I'm already running ${MAX_RUNNING_GLOBAL} research jobs; try again in a little while.`;
     }
     const limit = getServerSetting<number>(guildId, 'researchDaily', DEFAULT_DAILY_PER_GUILD) ?? DEFAULT_DAILY_PER_GUILD;
     const dayAgo = Date.now() - 24 * 60 * 60_000;
-    const today = this.jobs.filter((j) => j.guildId === guildId && Date.parse(j.startedAt) > dayAgo).length;
+    const today = this.jobs.filter((j) => j.guildId === guildId && Date.parse(j.startedAt) > dayAgo).length
+      + [...this.starting.values()].filter((g) => g === guildId).length;
     if (today >= limit) {
       return `This server has used its ${limit} deep-research run${limit === 1 ? '' : 's'} for today.`;
     }
@@ -225,9 +238,9 @@ export class Research {
     if (proposal.questions.length > 0) {
       lines.push('Before I start:');
       proposal.questions.forEach((q, i) => lines.push(`${i + 1}. ${q}`));
-      lines.push('', 'Reply to this message with your answers (or just "go"), or "cancel". I\'ll wait 30 minutes.');
+      lines.push('', 'Reply to this message (keep the ping on) with your answers (or just "go"), or "cancel". I\'ll wait 30 minutes.');
     } else {
-      lines.push('Reply to this message with "go" to start, or "cancel". I\'ll wait 30 minutes.');
+      lines.push('Reply to this message (keep the ping on) with "go" to start, or "cancel". I\'ll wait 30 minutes.');
     }
     if (agent === DEEP_RESEARCH_AGENT_MAX) lines.push('_(--advanced: the slower, more thorough agent)_');
 
@@ -258,8 +271,10 @@ export class Research {
       return false;
     }
     const isReply = message.reference?.messageId === pending.proposalMessageId;
-    const go = GO_WORDS.test(content);
-    const cancel = CANCEL_WORDS.test(content);
+    // A reply to some other message is about that message, whatever it says
+    if (message.reference && !isReply) return false;
+    const go = isReply ? GO_WORDS.test(content) : BARE_GO_WORDS.test(content);
+    const cancel = isReply ? CANCEL_WORDS.test(content) : BARE_CANCEL_WORDS.test(content);
     if (!isReply && !go && !cancel) return false;
 
     this.pending.delete(key);
@@ -289,7 +304,9 @@ export class Research {
       return;
     }
 
-    let interactionId: string;
+    // Hold the slot (synchronously, right after the checks) until the job is recorded
+    this.starting.set(message.author.id, pending.guildId);
+    let job: ResearchJob;
     try {
       const interaction = await this.genAI.interactions.create({
         agent: pending.agent,
@@ -297,34 +314,36 @@ export class Research {
         background: true,
         input: buildInput(pending.brief, clarifications),
       });
-      interactionId = interaction.id;
+      job = {
+        interactionId: interaction.id,
+        agent: pending.agent,
+        build: BUILD_ID,
+        guildId: pending.guildId,
+        channelId: message.channelId,
+        requesterId: message.author.id,
+        requesterTag: message.author.tag,
+        brief: pending.brief,
+        clarifications,
+        proposalMessageId: pending.proposalMessageId,
+        confirmMessageId: message.id,
+        startedAt: new Date().toISOString(),
+        status: 'running',
+        deliverTo: 'dm',
+      };
+      this.jobs.push(job);
+      this.save();
     } catch (error) {
       console.error('Could not start deep research:', error);
       trace.research = { refused: `start failed: ${errorMessage(error)}` };
       await reply(`❌ Couldn't start the research: ${shorten(errorMessage(error), 300)}`);
       return;
+    } finally {
+      this.starting.delete(message.author.id);
     }
-
-    const job: ResearchJob = {
-      interactionId,
-      agent: pending.agent,
-      build: BUILD_ID,
-      guildId: pending.guildId,
-      channelId: message.channelId,
-      requesterId: message.author.id,
-      requesterTag: message.author.tag,
-      brief: pending.brief,
-      clarifications,
-      proposalMessageId: pending.proposalMessageId,
-      confirmMessageId: message.id,
-      startedAt: new Date().toISOString(),
-      status: 'running',
-      deliverTo: 'dm',
-    };
-    this.jobs.push(job);
-    this.save();
-    trace.research = { jobId: interactionId };
-    console.log(`Deep research started: ${interactionId} (${pending.agent}) for ${job.requesterTag}`);
+    // Watch it from now on, whatever happens to the messages below
+    this.ensurePolling();
+    trace.research = { jobId: job.interactionId };
+    console.log(`Deep research started: ${job.interactionId} (${pending.agent}) for ${job.requesterTag}`);
 
     // Say hello in their DMs now, so we know where the report can go
     const dmOpen = await this.dm(job, `🔎 Researching: ${shorten(pending.brief, 1500)}\n\nThe report will arrive here, usually within 5–20 minutes.`);
@@ -335,7 +354,6 @@ export class Research {
     await reply(dmOpen
       ? "Started — I'll DM you the report, usually within 5–20 minutes."
       : "Started — I can't DM you (are your DMs closed?), so I'll post the report here, usually within 5–20 minutes.");
-    this.ensurePolling();
   }
 
   private ensurePolling(): void {
@@ -364,11 +382,13 @@ export class Research {
   }
 
   private async check(job: ResearchJob): Promise<void> {
-    if (Date.now() - Date.parse(job.startedAt) > JOB_TIMEOUT_MS) {
+    // Ask Gemini first: after a long outage the run may have finished, and that report is paid
+    // for. The timeout only applies to a run that is still going (or can't be asked about).
+    const timedOut = Date.now() - Date.parse(job.startedAt) > JOB_TIMEOUT_MS;
+    const timeOut = async () => {
       await this.genAI.interactions.cancel(job.interactionId).catch(() => {});
       await this.finish(job, 'timed_out', { error: `no result after ${Math.round(JOB_TIMEOUT_MS / 60_000)} minutes` });
-      return;
-    }
+    };
 
     let result;
     try {
@@ -376,6 +396,10 @@ export class Research {
     } catch (error) {
       if (isNotFound(error)) {
         await this.finish(job, 'not_found', { error: 'Gemini no longer has this interaction' });
+        return;
+      }
+      if (timedOut) {
+        await timeOut();
         return;
       }
       throw error;
@@ -387,6 +411,7 @@ export class Research {
       case 'in_progress':
       case 'queued':
       case 'requires_continuation':
+        if (timedOut) await timeOut();
         return;
       case 'completed': {
         const report = reportText(result);
