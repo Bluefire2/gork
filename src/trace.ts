@@ -38,6 +38,8 @@ export interface Trace {
   // Gemini wanted more tool calls than allowed, and was asked to answer without them
   toolLimitReached?: boolean;
   response?: string;
+  // File names of the image cards attached to the first reply (stats cards need Gemini to ask)
+  cards?: string[];
   // IDs of the messages the bot sent in reply
   replies: string[];
   error?: string;

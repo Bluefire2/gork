@@ -34,8 +34,11 @@ cp config.json.example config.json
   knowledge. The endpoint serves public data only. If it can't be reached, the bot answers
   without these tools. The production token is in the rs-mcp project's Secret Manager as
   `osrs-mcp-public-api-tokens`. Replies get image cards (`src/cards.ts`): a player's skills tab
-  when their stats are looked up (with quest points, diaries, combat achievements, clues and
-  collection log underneath), and a price chart when an item's price history is. Skill and
+  (with quest points, diaries, combat achievements, clues and collection log underneath) when
+  their stats are looked up *and* Gemini calls `show_stats_card` (`src/statsCardTool.ts`),
+  which the prompt tells it to do only when someone asks to see their stats or the question is
+  about their account as a whole, not for answers that need a couple of levels; and a price
+  chart whenever an item's price history is looked up. Skill and
   progress icons are from the [OSRS Wiki](https://oldschool.runescape.wiki) and fonts from
   [RuneStar/fonts](https://github.com/RuneStar/fonts) under CC0, both in `assets/osrs/`; item
   icons for the price chart are fetched from the Wiki when needed.
