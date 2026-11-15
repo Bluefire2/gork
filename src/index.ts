@@ -9,6 +9,7 @@ import { RsnTool } from './rsnTool';
 import { Research } from './research';
 import { PROPOSE_DEEP_RESEARCH, proposalFromArgs, RESEARCH_DECLARATIONS, ResearchTool } from './researchTool';
 import { replyCards } from './cards';
+import { StatsCardTool } from './statsCardTool';
 import { newTrace, saveTrace, traced, Trace } from './trace';
 import { BUILD_ID } from './version';
 import * as fs from 'fs';
@@ -271,10 +272,13 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
     return;
   }
 
-  // The RSN tool comes with the OSRS tools, and can only change this author's saved name
+  // The RSN tool (which can only change this author's saved name) and the stats-card tool
+  // (which decides whether the skills card is attached) come with the OSRS tools
   const tools = [
     ...(researchTool ? [traced(researchTool, trace)] : []),
-    ...(osrs ? [traced(osrs, trace), traced(new RsnTool(message.author.id), trace)] : []),
+    ...(osrs
+      ? [traced(osrs, trace), traced(new RsnTool(message.author.id), trace), traced(new StatsCardTool(), trace)]
+      : []),
   ];
 
   // Call Gemini API
