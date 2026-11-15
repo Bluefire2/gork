@@ -5,6 +5,7 @@ import * as path from 'path';
 import { BotFlags } from './flags';
 import { ResearchProposal } from './researchTool';
 import { getServerSetting } from './serverConfig';
+import { DISCORD_MESSAGE_LIMIT } from './split';
 import { Trace } from './trace';
 import { BUILD_ID } from './version';
 
@@ -26,7 +27,6 @@ const DEFAULT_DAILY_PER_GUILD = 5;
 const MAX_JOBS_KEPT = 200;
 // How much of the report goes in the message itself; the whole report is attached
 const EXCERPT_CHARS = 1500;
-const DISCORD_MESSAGE_LIMIT = 2000;
 
 const JOBS_PATH = path.join(__dirname, '..', 'researchJobs.json');
 const REPORTS_DIR = path.join(__dirname, '..', 'research');
