@@ -76,6 +76,9 @@ export async function replyCards(history: Content[] | undefined): Promise<Attach
     }
   }
 
+  for (const key of asked) {
+    if (!found.has(key)) console.log(`Card asked for but no matching lookup result: ${key}`);
+  }
   const wanted = [...found.entries()].filter(([key, { kind }]) => !kind.askedWith || asked.has(key));
   const cards: AttachmentBuilder[] = [];
   for (const [, { kind, value }] of wanted.slice(0, MAX_CARDS)) {

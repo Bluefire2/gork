@@ -326,8 +326,10 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
   log(text);
   log('---');
 
-  // Cards for any players' stats or item price histories looked up, attached to the first reply
+  // Cards attached to the first reply: a skills card for each player Gemini looked up and asked
+  // to show, a chart for each item whose price history it looked up
   const files = await replyCards(history);
+  trace.cards = files.map((f) => f.name ?? '');
 
   // Check if we got a valid response
   if (!text || text.trim().length === 0) {
