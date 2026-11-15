@@ -10,6 +10,7 @@ import { Research } from './research';
 import { PROPOSE_DEEP_RESEARCH, proposalFromArgs, RESEARCH_DECLARATIONS, ResearchTool } from './researchTool';
 import { replyCards } from './cards';
 import { StatsCardTool } from './statsCardTool';
+import { splitMessage } from './split';
 import { newTrace, saveTrace, traced, Trace } from './trace';
 import { BUILD_ID } from './version';
 import * as fs from 'fs';
@@ -337,22 +338,12 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
     return;
   }
 
-  // Discord has a 2000 character limit per message, so we may need to split long responses
-  if (text.length <= 2000) {
-    await reply({ content: text, files });
-  } else {
-    // Split into chunks if response is too long
-    const chunks = text.match(/.{1,2000}/g) || [];
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      if (!chunk) continue;
-
-      if (i === 0) {
-        await reply({ content: chunk, files });
-      } else {
-        trace.replies.push((await message.channel.send(chunk)).id);
-      }
-    }
+  // A reply longer than a Discord message goes out in pieces cut at paragraph or line breaks;
+  // the first is a reply to the mention and carries the cards, the rest follow it in the channel
+  const pieces = splitMessage(text);
+  await reply({ content: pieces[0], files });
+  for (const piece of pieces.slice(1)) {
+    trace.replies.push((await message.channel.send(piece)).id);
   }
 }
 
