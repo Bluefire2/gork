@@ -127,6 +127,9 @@ function knownRsns(currentMessage: Message, messageHistory: Message[], botUserId
  * @param osrsTools - Whether the Old School RuneScape lookup tools are available for this reply
  * @param researchTool - Whether Gemini may propose a deep-research run for this reply
  * @returns A formatted prompt string for Gemini
+ *
+ * In a server the bot was mentioned in a channel conversation; in a DM it is a one-to-one
+ * chat, and the prompt says so instead of talking about a server and a mention.
  */
 export function buildPrompt(
   currentMessage: Message,
@@ -136,11 +139,28 @@ export function buildPrompt(
   osrsTools = false,
   researchTool = false
 ): string {
+  const isDm = !currentMessage.guild;
+
+  // Get the author name
+  let authorName: string;
+  if (botUserId && currentMessage.author.id === botUserId) {
+    authorName = '_YOU_';
+  } else if (currentMessage.author.bot) {
+    authorName = `Bot (${currentMessage.author.username})`;
+  } else {
+    authorName = currentMessage.author.username;
+  }
+
   // Build the initial system prompt
-  const systemPrompt = `You are a helpful and friendly chatbot assistant 
-participating in a Discord server conversation. You are an active participant 
-in the conversation, not just a responder. Your task is to engage naturally and 
-continue the conversation flow as if you've been part of the discussion all along.
+  const setting = isDm
+    ? `You are a helpful and friendly chatbot assistant
+chatting with ${authorName} in a Discord direct message. It is a private one-to-one
+conversation: everything here was written by ${authorName} or by you.`
+    : `You are a helpful and friendly chatbot assistant
+participating in a Discord server conversation. You are an active participant
+in the conversation, not just a responder. Your task is to engage naturally and
+continue the conversation flow as if you've been part of the discussion all along.`;
+  const systemPrompt = `${setting}
 
 IMPORTANT CONTEXT ABOUT DISCORD MESSAGES:
 - When you see "@username" in a message, it means that user was tagged/mentioned, 
@@ -151,7 +171,7 @@ IMPORTANT CONTEXT ABOUT DISCORD MESSAGES:
   "Bot (username): message content" to distinguish them from human users.
 - Regular user messages are formatted as "username: message content".
 
-Below is the recent conversation history from the Discord channel (most recent 
+Below is the recent conversation history from ${isDm ? 'this direct message conversation' : 'the Discord channel'} (most recent
 messages at the end):
 
 `;
@@ -171,28 +191,24 @@ messages at the end):
     ? ({ ...currentMessage, content: contentOverride } as Message)
     : currentMessage;
 
-  // Get the author name
-  let authorName: string;
-  if (botUserId && currentMessage.author.id === botUserId) {
-    authorName = '_YOU_';
-  } else if (currentMessage.author.bot) {
-    authorName = `Bot (${currentMessage.author.username})`;
-  } else {
-    authorName = currentMessage.author.username;
-  }
-
   // Get the message content with mentions replaced
   const messageContent = replaceMentions(messageToFormat, botUserId);
 
   // Build the current message section
-  const currentMessageSection = `You have been tagged/mentioned by ${authorName}. 
+  const currentMessageSection = (isDm
+    ? `${authorName} has just sent you this message: "${messageContent}"
+
+Please respond naturally, taking into account the conversation so far. You are
+talking to ${authorName} alone, so respond directly to them.
+`
+    : `You have been tagged/mentioned by ${authorName}.
 Their message is: "${messageContent}"
 
-Please respond naturally as a participant in this conversation, continuing the 
-discussion organically. Take into account the full conversation context and respond 
-in a way that feels like a natural continuation of the ongoing discussion. You 
+Please respond naturally as a participant in this conversation, continuing the
+discussion organically. Take into account the full conversation context and respond
+in a way that feels like a natural continuation of the ongoing discussion. You
 should respond directly to ${authorName}'s message.
-
+`) + `
 IMPORTANT: When you respond, your response should **JUST** be your response 
 message text, as if you are speaking naturally in the conversation. Do not 
 include an author specifier/prefix in your response.`;

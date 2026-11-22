@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events, Message, MessageReplyOptions, OmitPartialGroupDMChannel } from 'discord.js';
+import { ChannelType, Client, GatewayIntentBits, Events, Message, MessageReplyOptions, OmitPartialGroupDMChannel, Partials } from 'discord.js';
 import { FunctionCallingConfigMode, GoogleGenAI } from '@google/genai';
 import { buildPrompt, MESSAGE_HISTORY_LIMIT } from './prompt';
 import { parseFlags, BotFlags } from './flags';
@@ -120,8 +120,15 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent,
   ],
+  // A DM channel is only cached once the bot has opened or fetched it, so without this partial
+  // discord.js drops the messageCreate event of nearly every DM. It also applies to servers: a
+  // message in a guild channel the bot never saw created (a thread started during a gateway gap)
+  // used to be dropped and is now delivered with a skeletal channel object, which is enough for
+  // replying and fetching history.
+  partials: [Partials.Channel],
 });
 
 // Deep-research proposals, confirmations and background runs
@@ -141,13 +148,18 @@ client.once(Events.ClientReady, async () => {
   }
 });
 
-// Respond to messages that mention/tag the bot
+// Respond to messages that mention/tag the bot in a server, and to every message in a DM
 client.on('messageCreate', async (message) => {
-  // Ignore messages from bots
-  if (message.author.bot) return;
+  // Ignore messages from bots, and system messages (pins, joins), which nobody wrote to the bot
+  if (message.author.bot || message.system) return;
 
-  // Check if the bot is mentioned in the message
-  if (!message.mentions.has(client.user!)) return;
+  // In a server the bot answers only when mentioned; a DM is always addressed to it. The
+  // DirectMessages intent also delivers group DMs, where a partial channel can't even be sent to.
+  if (message.guild) {
+    if (!message.mentions.has(client.user!)) return;
+  } else if (message.channel.type !== ChannelType.DM) {
+    return;
+  }
 
   // Everything the bot saw and did for this message, saved for bug reports
   const trace = newTrace(message, BUILD_ID);
@@ -170,14 +182,16 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
     trace.replies.push((await message.reply(options)).id);
   };
 
-  // Extract the message content, removing the bot mention
+  // Extract the message content, removing the bot mention (there isn't one in a DM, usually)
   const rawMessageContent = message.content
     .replace(new RegExp(`<@!?${client.user?.id}>`, 'g'), '')
     .trim();
 
-  // If there's no message after the mention, send a default response
+  // If there's no message after the mention, send a default response. A message with no text at
+  // all (possible in a DM, or when replying to the bot) is an attachment, sticker or forwarded
+  // message, which the bot can't read.
   if (!rawMessageContent) {
-    await reply('Hello! How can I help you?');
+    await reply(message.content.trim() ? 'Hello! How can I help you?' : "I can only read text. What would you like to ask?");
     return;
   }
 
