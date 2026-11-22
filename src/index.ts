@@ -124,7 +124,10 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
   // A DM channel is only cached once the bot has opened or fetched it, so without this partial
-  // discord.js drops the messageCreate event of nearly every DM
+  // discord.js drops the messageCreate event of nearly every DM. It also applies to servers: a
+  // message in a guild channel the bot never saw created (a thread started during a gateway gap)
+  // used to be dropped and is now delivered with a skeletal channel object, which is enough for
+  // replying and fetching history.
   partials: [Partials.Channel],
 });
 
@@ -184,11 +187,11 @@ async function handleMention(message: OmitPartialGroupDMChannel<Message>, trace:
     .replace(new RegExp(`<@!?${client.user?.id}>`, 'g'), '')
     .trim();
 
-  // If there's no message after the mention, send a default response. In a DM there is no bare
-  // mention: an empty message is an attachment, sticker or forwarded message, which the bot
-  // can't read.
+  // If there's no message after the mention, send a default response. A message with no text at
+  // all (possible in a DM, or when replying to the bot) is an attachment, sticker or forwarded
+  // message, which the bot can't read.
   if (!rawMessageContent) {
-    await reply(message.guild ? 'Hello! How can I help you?' : "I can only read text. What would you like to ask?");
+    await reply(message.content.trim() ? 'Hello! How can I help you?' : "I can only read text. What would you like to ask?");
     return;
   }
 
