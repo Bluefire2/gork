@@ -51,6 +51,14 @@ cp config.json.example config.json
   stored in `serverConfig.json` under `users`. Saved names of the people in the conversation
   are passed to Gemini.
 
+**Where gork answers:** in a server channel, any message that mentions the bot; in a DM, every
+message (no mention needed). DMs get the same features - flags like `--advanced`, the OSRS tools,
+`--setRsn` and `--version` - with the DM's own recent messages as context. Server settings
+(`--setFlag`, `--setPersonality` and friends) belong to a server, so in a DM those commands get
+an explanation instead, and no server's personality or `runescape` mode applies. Deep research
+is refused in DMs because its daily limit is per server. Note that anyone who shares a server
+with the bot can DM it, and DMs have no per-server controls or limits of their own.
+
 **Deep research:** for questions that deserve a proper multi-source investigation, gork can hand
 them to Gemini's Deep Research agent, which takes 5–20 minutes and sends the report by DM
 (`src/research.ts`, `src/researchTool.ts`). Either Gemini proposes it when a question clearly
@@ -126,7 +134,12 @@ npm run test
 - **Use External Emojis** - Optional, for emoji support
 - **Embed Links** - Optional, for rich embeds
 
-### Privileged Intent
+### Gateway Intents
+The bot asks for the Guilds, Guild Messages and Direct Messages intents (none of them
+privileged) plus Message Content. Receiving DMs also needs the `Channel` partial, which
+`src/index.ts` enables: otherwise discord.js drops a DM's message unless the bot has already
+opened or fetched that DM channel since it started.
+
 ⚠️ **Important**: This bot requires the **Message Content Intent** (privileged intent), which must be enabled in the Discord Developer Portal:
 1. Go to https://discord.com/developers/applications
 2. Select your bot application
@@ -185,7 +198,7 @@ sudo bash /opt/gork/deploy/deploy.sh
 
 Logs: `journalctl -u gork -f`
 
-Traces: every mention the bot handles is saved to `traces/<message ID>.json` (gitignored, newest 500 kept): the parsed flags, model, full prompt and history length, tool calls, response, any error, and the IDs of its replies. Useful for bug reports - see AGENTS.md.
+Traces: every message the bot handles (a mention in a server, or a DM) is saved to `traces/<message ID>.json` (gitignored, newest 500 kept): the parsed flags, model, full prompt and history length, tool calls, response, any error, and the IDs of its replies. Useful for bug reports - see AGENTS.md.
 
 Deep-research runs are in `researchJobs.json` (newest 200 finished kept, running ones always) and their reports in `research/`. Both are written by the bot next to `serverConfig.json`; keep `researchJobs.json` across deploys, or runs in progress at restart are lost.
 

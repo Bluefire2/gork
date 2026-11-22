@@ -38,6 +38,7 @@ The external IP is ephemeral; nothing depends on it.
 3. Verify in Discord - the script's check does not cover the Gemini calls:
    - `--version` shows the `BUILD_ID` from `src/version.ts` at the deployed commit
    - one normal message and one with `--advanced` both get answers
+   - a DM to the bot (no mention) gets an answer
    - if the change touched deep research: `--research <question>` posts a proposal (costs
      nothing until confirmed), and the journal shows `Resuming N deep-research job(s)` if any
      were running during the restart
@@ -52,8 +53,9 @@ Logs: `sudo journalctl -u gork -n 50`.
 
 ## Bug reports: traces
 
-Each mention gork handles is saved to `/opt/gork/traces/<message ID>.json` (newest 500 kept,
-mode 600): build ID, guild/channel/author, parsed flags, model, the **full prompt** (which
+Each message gork handles (a mention in a server, or any DM) is saved to
+`/opt/gork/traces/<message ID>.json` (newest 500 kept, mode 600): build ID, guild/channel/author
+(`guild` is null for a DM), parsed flags, model, the **full prompt** (which
 includes the channel history as the bot saw it) and how many history messages it used, each
 tool call as it ran (so calls before a failed Gemini request are kept) with long strings truncated,
 whether the tool-call limit was reached,
@@ -61,7 +63,8 @@ the response, which image cards were attached (`cards`; a stats card needs Gemin
 called `show_stats_card`), any error with its stack, and the IDs of the bot's reply messages.
 
 A bug report is usually a Discord message link,
-`https://discord.com/channels/<guild>/<channel>/<message>`. The last ID is either the user's
+`https://discord.com/channels/<guild>/<channel>/<message>` (`@me` in place of the guild for a
+DM). The last ID is either the user's
 message (the trace's file name) or one of the bot's replies (listed in `replies`). The directory
 is readable only by `gork`, so search it with `sudo` rather than `cd`-ing in:
 
@@ -70,8 +73,9 @@ sudo grep -rl '"<message ID>"' /opt/gork/traces
 ```
 
 Pruning deletes old traces, but the daily disk snapshots keep them for as long as the snapshots
-are retained. Traces hold other people's messages: read them on the VM, quote only what the
-bug needs, and don't copy whole files off the VM or into commits.
+are retained. Traces hold other people's messages, and a DM trace holds a private one-to-one
+conversation: read them on the VM, quote only what the bug needs, and don't copy whole files
+off the VM or into commits.
 
 **Deep research** spans several messages and a background run, so it has its own records. The
 mention that got the proposal and the one that confirmed it each have a trace with a `research`

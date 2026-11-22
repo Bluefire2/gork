@@ -18,6 +18,10 @@ export interface CommandResult {
  *   --listFlags - Lists all flags for the server
  *   --removeFlag="flagName" - Removes a flag
  *   --setRsn <name> / --getRsn / --removeRsn - The author's Old School RuneScape name (any server or DM)
+ *   --version - The running build (any server or DM)
+ *
+ * The flag and personality commands change a server's settings, so in a DM they get an
+ * explanation instead of going to Gemini.
  *
  * @param message - The Discord message
  * @param content - The message content (with bot mention removed)
@@ -30,8 +34,18 @@ export function handleServerConfigCommand(message: Message, content: string): Co
     return rsnResult;
   }
 
-  // Only handle commands in guilds (servers), not DMs
+  // The remaining commands change a server's settings, so they only work in a server channel;
+  // --version works anywhere
   if (!message.guild) {
+    if (GUILD_COMMAND.test(content)) {
+      return {
+        handled: true,
+        response: '❌ Server settings can only be viewed or changed from a channel in that server, not in a DM.'
+      };
+    }
+    if (content.match(/--version/i)) {
+      return versionResult();
+    }
     return { handled: false };
   }
 
@@ -160,16 +174,23 @@ export function handleServerConfigCommand(message: Message, content: string): Co
     };
   }
 
-  // Parse --version
+  // Parse --version (last, so a personality text that mentions --version still gets set)
   if (content.match(/--version/i)) {
-    return {
-      handled: true,
-      response: `🤖 Bot Version: \`${BUILD_ID}\` (Built: \`${BUILD_TIMESTAMP}\`)`
-    };
+    return versionResult();
   }
 
   // No command matched
   return { handled: false };
+}
+
+// The commands above that read or write a server's settings
+const GUILD_COMMAND = /--(setFlag|getFlag|listFlags|removeFlag|setPersonality|getPersonality)\b/i;
+
+function versionResult(): CommandResult {
+  return {
+    handled: true,
+    response: `🤖 Bot Version: \`${BUILD_ID}\` (Built: \`${BUILD_TIMESTAMP}\`)`
+  };
 }
 
 // Jagex display names: 1-12 letters, digits, spaces, hyphens and underscores
